@@ -5,7 +5,7 @@
 #include <Arduino.h>
 #include <ArduinoJson.h>
 
-#define FW_VERSION "1.1.0"
+#define FW_VERSION "1.1.1"
 #define HOSTNAME_DEFAULT "flightradar"
 #define AP_SSID_PREFIX "FlightRadar-Setup"
 
@@ -47,7 +47,8 @@ enum NightMode : uint8_t { NIGHT_OFF = 0, NIGHT_CALM, NIGHT_BLANK };
 enum MapStyle  : uint8_t { MAP_STREETS = 0, MAP_DETAILED, MAP_BLANK };
 enum Units     : uint8_t { UNITS_US = 0, UNITS_AVIATION, UNITS_METRIC };
 enum Layout    : uint8_t { LAYOUT_PANEL = 0, LAYOUT_FULL };
-enum DataSrc   : uint8_t { SRC_AIRPLANESLIVE = 0, SRC_ADSBLOL, SRC_ADSBFI, SRC_COUNT };
+// adsb.lol first: airplanes.live now requires registration (HTTP 403)
+enum DataSrc   : uint8_t { SRC_ADSBLOL = 0, SRC_ADSBFI, SRC_AIRPLANESLIVE, SRC_COUNT };
 
 struct Settings {
   // --- location ---
@@ -93,7 +94,7 @@ struct Settings {
   String tzName = "America/New_York";
   String tzPosix = "EST5EDT,M3.2.0,M11.1.0";
   String hostname = HOSTNAME_DEFAULT;
-  uint8_t source = SRC_AIRPLANESLIVE;
+  uint8_t source = SRC_ADSBLOL;
 };
 
 extern Settings cfg;

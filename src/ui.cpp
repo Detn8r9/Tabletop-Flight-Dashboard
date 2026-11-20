@@ -755,7 +755,14 @@ bool uiFrame() {
     String ts = mapStatus();
     if (ts.startsWith("downloading") || ts.startsWith("drawing")) label(cx - 51, cy + R - 40, "Drawing the map...");
   }
-  if (!fs.lastOkMs) label(cx - 60, cy + 22, fs.failures ? "Can't reach planes data" : "Looking for planes...");
+  if (!fs.lastOkMs) {
+    label(cx - 69, cy + 22, fs.failures ? "Can't reach plane data yet" : "Looking for planes...");
+    if (fs.failures && fs.error.length()) {
+      char e[40];
+      snprintf(e, sizeof e, "%s", fs.error.c_str());
+      label(cx - (int)strlen(e) * 3, cy + 34, e);   // the reason, for troubleshooting
+    }
+  }
 
   // alert banner
   AlertEvent ev;
