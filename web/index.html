@@ -61,15 +61,15 @@ tr.em td{color:var(--bad);font-weight:700}
  <div class="card" id="prevcard">
   <canvas id="screen" width="400" height="300"></canvas>
   <div class="prevbar"><span>Live view of the radar screen</span><span id="prevfps"></span></div>
-  <details id="acdet" style="margin-top:8px"><summary style="cursor:pointer;color:var(--mut);font-size:13.5px">Aircraft list</summary>
-   <table><thead><tr><th>Flight</th><th>Type</th><th>Alt</th><th>Speed</th><th>Dist</th></tr></thead><tbody id="actable"></tbody></table>
+  <details id="acdet" style="margin-top:8px"><summary style="cursor:pointer;color:var(--mut);font-size:13.5px">List of planes on the radar</summary>
+   <table><thead><tr><th>Flight</th><th>Aircraft</th><th>Altitude</th><th>Distance</th><th></th></tr></thead><tbody id="actable"></tbody></table>
   </details>
  </div>
 </div>
 <div>
 <nav id="nav">
  <button data-tab="loc" class="on">Location</button><button data-tab="disp">Display</button><button data-tab="air">Aircraft</button>
- <button data-tab="alert">Alerts</button><button data-tab="night">Night</button><button data-tab="sys">System</button>
+ <button data-tab="alert">Alerts</button><button data-tab="night">Night</button><button data-tab="help">Help</button><button data-tab="sys">System</button>
 </nav>
 
 <!-- LOCATION -->
@@ -94,24 +94,27 @@ tr.em td{color:var(--bad);font-weight:700}
 
 <!-- DISPLAY -->
 <section class="tab" id="t-disp">
- <div class="card"><h3>Zoom (radar range)</h3>
+ <div class="card"><h3>How far to look</h3>
+  <p class="hint" style="margin:0 0 8px">Distance from your home to the solid ring on the radar. Planes beyond the ring still show out to the screen edges.</p>
   <div class="chips" id="ranges"></div>
-  <div class="row"><div class="t">Custom range<small>Nautical miles from the center to the edge</small></div><input type="number" min="2" max="250" step="1" data-k="view.range"></div>
+  <div class="row"><div class="t">Other distance<small class="uname-long"></small></div><input type="number" min="2" max="280" step="1" data-dist="view.range"></div>
  </div>
- <div class="card"><h3>Radar</h3>
+ <div class="card"><h3>Units</h3>
+  <div class="row"><div class="t">Show distances and speeds in</div><select data-k="view.units" data-num id="unitsel"><option value="0">Feet, miles, mph</option><option value="1">Feet, nautical miles, knots (pilot)</option><option value="2">Meters, km, km/h</option></select></div>
+ </div>
+ <div class="card"><h3>Labels next to each plane</h3>
+  <div class="row"><div class="t">Show labels<small>You can also hold the BOOT button on the radar to switch them on or off</small></div><label class="sw"><input type="checkbox" data-k="view.labels"><i></i></label></div>
+  <p class="hint" style="margin:2px 0 8px">Tap to choose what to show:</p>
+  <div class="chips" id="fields"></div>
+  <p class="hint">Fewer items keep the screen tidy when it's busy.</p>
+ </div>
+ <div class="card"><h3>Look</h3>
+  <div class="row"><div class="t">Background map</div><select data-k="view.map" data-num><option value="0">Street map (main roads)</option><option value="1">Street map (more roads)</option><option value="2">No map</option></select></div>
+  <div class="row"><div class="t">Layout</div><select data-k="view.layout" data-num><option value="0">Radar + information panel</option><option value="1">Radar only (full screen)</option></select></div>
+  <div class="row"><div class="t">Distance rings</div><label class="sw"><input type="checkbox" data-k="view.rings"><i></i></label></div>
+  <div class="row"><div class="t">Direction lines<small>A short line in front of each plane showing where it's heading</small></div><label class="sw"><input type="checkbox" data-k="view.leaders"><i></i></label></div>
   <div class="row"><div class="t">Sweep speed<small id="sweepv"></small></div></div>
   <input type="range" min="2" max="10" step="0.5" data-k="view.sweep" oninput="sweepLbl()">
-  <div class="row"><div class="t">Data refresh<small>How often aircraft positions are downloaded</small></div>
-   <select data-k="view.refresh" data-num><option value="2">2 s</option><option value="3">3 s</option><option value="5">5 s</option><option value="10">10 s</option><option value="15">15 s</option><option value="30">30 s</option></select></div>
-  <div class="row"><div class="t">Layout</div><select data-k="view.layout" data-num><option value="0">Radar + side panel</option><option value="1">Full-screen radar</option></select></div>
-  <div class="row"><div class="t">Background map</div><select data-k="view.map" data-num><option value="0">Terrain (contours + shading)</option><option value="1">Contours only</option><option value="2">None</option></select></div>
-  <div class="row"><div class="t">Range rings</div><label class="sw"><input type="checkbox" data-k="view.rings"><i></i></label></div>
-  <div class="row"><div class="t">Projected track lines<small>Shows where each plane will be in one minute</small></div><label class="sw"><input type="checkbox" data-k="view.leaders"><i></i></label></div>
- </div>
- <div class="card"><h3>Aircraft labels</h3>
-  <div class="row"><div class="t">Show labels</div><label class="sw"><input type="checkbox" data-k="view.labels"><i></i></label></div>
-  <p class="hint" style="margin:2px 0 8px">Information shown next to each aircraft:</p>
-  <div class="chips" id="fields"></div>
  </div>
 </section>
 
@@ -133,12 +136,12 @@ tr.em td{color:var(--bad);font-weight:700}
   </div>
  </div>
  <div class="card"><h3>More filters</h3>
-  <div class="row"><div class="t">Hide aircraft on the ground</div><label class="sw"><input type="checkbox" data-k="filter.hideGround"><i></i></label></div>
-  <div class="row"><div class="t">Altitude filter<small>Only show aircraft between these altitudes (feet)</small></div><label class="sw"><input type="checkbox" data-k="filter.altOn"><i></i></label></div>
+  <div class="row"><div class="t">Hide planes parked on the ground</div><label class="sw"><input type="checkbox" data-k="filter.hideGround"><i></i></label></div>
+  <div class="row"><div class="t">Only certain heights<small>Only show planes between these altitudes, in feet</small></div><label class="sw"><input type="checkbox" data-k="filter.altOn"><i></i></label></div>
   <div class="grid2" data-show="filter.altOn"><div><label>Minimum</label><input type="number" step="500" data-k="filter.altMin"></div><div><label>Maximum</label><input type="number" step="500" data-k="filter.altMax"></div></div>
-  <div class="row"><div class="t">Airline / callsign filter<small>Only show callsigns starting with these</small></div><label class="sw"><input type="checkbox" data-k="filter.callOn"><i></i></label></div>
+  <div class="row"><div class="t">Only certain airlines<small>Flight codes starting with these letters, e.g. DAL = Delta, UAL = United, AAL = American, SWA = Southwest</small></div><label class="sw"><input type="checkbox" data-k="filter.callOn"><i></i></label></div>
   <div data-show="filter.callOn"><input type="text" data-k="filter.calls" placeholder="e.g. DAL, UAL, SWA, N" style="width:100%" autocapitalize="characters"></div>
-  <div class="row"><div class="t">Always show emergencies<small>Squawk 7500 / 7600 / 7700 ignore all filters</small></div><label class="sw"><input type="checkbox" data-k="filter.emergAlways"><i></i></label></div>
+  <div class="row"><div class="t">Always show emergencies<small>Planes reporting an emergency ignore these filters</small></div><label class="sw"><input type="checkbox" data-k="filter.emergAlways"><i></i></label></div>
  </div>
 </section>
 
@@ -156,8 +159,8 @@ tr.em td{color:var(--bad);font-weight:700}
    <div class="row"><div class="t">Helicopters</div><label class="sw"><input type="checkbox" data-k="alerts.heli"><i></i></label></div>
    <div class="row"><div class="t">Watched aircraft types</div><label class="sw"><input type="checkbox" data-k="alerts.typesOn"><i></i></label></div>
    <div data-show="alerts.typesOn"><input type="text" data-k="alerts.types" placeholder="e.g. A388, B748, C17, B52" style="width:100%" autocapitalize="characters"></div>
-   <div class="row"><div class="t">Anything passing close by<small>Distance in nautical miles</small></div><input type="number" min="0.5" max="50" step="0.5" data-k="alerts.nearNm" style="width:80px"><label class="sw"><input type="checkbox" data-k="alerts.nearOn"><i></i></label></div>
-   <p class="hint">Each aircraft alerts at most once an hour. Alerts consider everything in range, even aircraft hidden by your filters.</p>
+   <div class="row"><div class="t">Anything passing close by<small class="uname-within"></small></div><input type="number" min="0.5" max="60" step="0.5" data-dist="alerts.nearNm" style="width:80px"><label class="sw"><input type="checkbox" data-k="alerts.nearOn"><i></i></label></div>
+   <p class="hint">Each plane alerts at most once an hour. Alerts include planes hidden by your filters.</p>
   </div>
  </div>
 </section>
@@ -171,22 +174,48 @@ tr.em td{color:var(--bad);font-weight:700}
  </div>
 </section>
 
+<!-- HELP -->
+<section class="tab" id="t-help">
+ <div class="card"><h3>Reading the radar</h3>
+  <p><b>The little house</b> in the middle is home. The <b>solid ring</b> is the distance you picked under Display; dotted rings are in between.</p>
+  <p><b>Plane and helicopter icons</b> point the way they're flying. The short line in front shows where they'll be in about a minute.</p>
+  <p>The <b>sweep line</b> spins like a real radar. Each plane flashes and updates as the line passes over it.</p>
+  <p>Next to each plane: the <b>flight</b> (e.g. "Delta 1234"), the <b>plane model</b>, and how <b>high</b> it is. Small private planes show their registration (like N172SP) instead of a flight name.</p>
+  <p>The panel on the right shows the time, how many planes are nearby, and the <b>closest</b> one.</p>
+ </div>
+ <div class="card"><h3>Buttons on the radar</h3>
+  <p><b>KEY</b> – zoom in (look closer). <b>BOOT</b> – zoom out (look farther).</p>
+  <p>Hold <b>BOOT</b> – hide or show the plane labels.</p>
+  <p>Hold <b>KEY</b> for 2 seconds – show this page's address. Keep holding for 10 seconds to erase everything and start over.</p>
+  <p><b>PWR</b> – turn on (one click) or off (hold).</p>
+ </div>
+ <div class="card"><h3>Good to know</h3>
+  <p>The screen has no light of its own, like a paper page. Put it where daylight or a lamp reaches it.</p>
+  <p>Some planes don't share their position, so a few (often military) won't appear.</p>
+  <p>Typical heights: airliners cruise at 30,000–40,000 ft, climb and descend near airports, and small planes and helicopters stay below about 10,000 ft.</p>
+  <p>If the screen says it can't reach your Wi-Fi, join the <b>FlightRadar-Setup</b> network on your phone to pick a network again.</p>
+ </div>
+</section>
+
 <!-- SYSTEM -->
 <section class="tab" id="t-sys">
- <div class="card"><h3>General</h3>
-  <div class="row"><div class="t">Time zone</div><select data-k="system.tz" id="tzsel"></select></div>
-  <div class="row"><div class="t">Flight data source<small>Free community networks. Falls back to the others automatically.</small></div><select data-k="system.source" data-num><option value="0">airplanes.live</option><option value="1">adsb.lol</option><option value="2">adsb.fi</option></select></div>
-  <div class="row"><div class="t">Device name<small id="hosthint"></small></div><input type="text" data-k="system.hostname" style="width:150px" autocapitalize="none"></div>
- </div>
  <div class="card"><h3>Status</h3><div class="kv" id="kv"></div></div>
- <div class="card"><h3>Firmware update</h3>
-  <input type="file" id="fw" accept=".bin"><div class="btns"><button class="btn" onclick="upload()">Upload &amp; install</button></div><p class="hint" id="fwmsg">Use the firmware.bin file from a newer build.</p>
+ <div class="card"><h3>Time zone</h3>
+  <div class="row"><div class="t">Clock time zone</div><select data-k="system.tz" id="tzsel"></select></div>
  </div>
- <div class="card"><h3>Maintenance</h3>
+ <div class="card"><h3>Start over</h3>
   <div class="btns"><button class="btn" onclick="if(confirm('Restart the radar?'))post('/api/reboot')">Restart</button>
   <button class="btn bad" onclick="reset()">Factory reset</button></div>
-  <p class="hint">Factory reset erases the location, Wi-Fi network and all settings. The radar restarts in setup mode with its own Wi-Fi hotspot.</p>
+  <p class="hint">Factory reset erases the location, Wi-Fi network and all settings. The radar then starts in setup mode with its own Wi-Fi hotspot.</p>
  </div>
+ <details class="grp" style="margin-bottom:12px"><summary><span>Advanced</span><small>for tinkerers</small></summary><div class="in">
+  <div class="row"><div class="t">Flight data source<small>Free community networks. Switches to the others automatically if one is down.</small></div><select data-k="system.source" data-num><option value="0">airplanes.live</option><option value="1">adsb.lol</option><option value="2">adsb.fi</option></select></div>
+  <div class="row"><div class="t">Data refresh<small>How often positions are downloaded</small></div>
+   <select data-k="view.refresh" data-num><option value="2">2 s</option><option value="3">3 s</option><option value="5">5 s</option><option value="10">10 s</option><option value="15">15 s</option><option value="30">30 s</option></select></div>
+  <div class="row"><div class="t">Device name<small id="hosthint"></small></div><input type="text" data-k="system.hostname" style="width:150px" autocapitalize="none"></div>
+  <div class="row"><div class="t">Firmware update<small id="fwmsg">Install a newer firmware.bin file</small></div></div>
+  <input type="file" id="fw" accept=".bin"><div class="btns"><button class="btn" onclick="upload()">Upload &amp; install</button></div>
+ </div></details>
 </section>
 </div></div>
 <div id="toast">Saved</div>
@@ -194,9 +223,13 @@ tr.em td{color:var(--bad);font-weight:700}
 <script>
 const $=id=>document.getElementById(id), $$=s=>[...document.querySelectorAll(s)];
 let C=null; // current config
-const CLASSES=[["airliner","Airliners","Large and heavy jets"],["regional","Regional & small","Regional jets, turboprops, bizjets"],["light","Light aircraft","Small private planes"],["highperf","High performance","Very fast or agile aircraft"],["heli","Helicopters",""],["glider","Gliders & ultralights",""],["balloon","Balloons & airships",""],["drone","Drones",""],["military","Military","Flagged as military in the aircraft database"],["unknown","Unclassified","Aircraft that don't broadcast a category"]];
-const FIELDS=[["callsign","Callsign"],["reg","Registration"],["type","Type"],["alt","Altitude"],["speed","Speed"],["heading","Heading"],["dist","Distance"],["vs","Climb/descent"],["squawk","Squawk"]];
-const RANGES=[3,5,10,15,25,40,60,100,150,250];
+const CLASSES=[["airliner","Airliners","Big passenger and cargo jets"],["regional","Regional & business jets","Smaller jets and propeller airliners"],["light","Small planes","Private and training planes"],["highperf","High performance","Very fast or agile aircraft"],["heli","Helicopters","Police, medical, news, tours"],["glider","Gliders & ultralights",""],["balloon","Balloons & blimps",""],["drone","Drones",""],["military","Military",""],["unknown","Unclassified","Planes that don't say what they are"]];
+const FIELDS=[["flight","Flight name"],["model","Plane model"],["alt","Altitude"],["speed","Speed"],["dir","Direction"],["dist","Distance away"],["vs","Climbing / descending"],["code","Flight code"],["reg","Registration"],["type","Type code"],["squawk","Squawk code"]];
+const RANGES=[2,5,10,15,25,50,100,200];
+const UNIT=[[1.15078,'mi','miles'],[1,'nm','nautical miles'],[1.852,'km','kilometers']];
+function U(){return UNIT[C.view.units||0]}
+function toDisp(nm){return Math.round(nm*U()[0]*10)/10}
+function toNm(v){return v/U()[0]}
 const GROUPS={
  "Boeing":"B712 B733 B734 B735 B736 B737 B738 B739 B37M B38M B39M B3XM B744 B748 B752 B753 B762 B763 B764 B772 B77L B773 B77W B788 B789 B78X",
  "Airbus":"BCS1 BCS3 A318 A319 A320 A321 A19N A20N A21N A332 A333 A338 A339 A343 A346 A359 A35K A388",
@@ -228,8 +261,10 @@ function bindAll(){
   if(el._b)return;el._b=1;
   el.addEventListener('change',()=>{let v=el.type==='checkbox'?el.checked:el.value;
    if(el.type==='number'||el.type==='range'||'num' in el.dataset)v=Number(v);
-   save(patchFor(k,v));if(k==='view.range')renderRanges()});
+   save(patchFor(k,v));if(k==='view.units')refreshUnits()});
  });
+ $$('[data-dist]').forEach(el=>{if(el._b)return;el._b=1;el.addEventListener('change',()=>{const v=parseFloat(el.value);if(!isNaN(v)&&v>0){save(patchFor(el.dataset.dist,+toNm(v).toFixed(3)));renderRanges()}})});
+ refreshUnits();
  applyShow();
 }
 function applyShow(){$$('[data-show]').forEach(e=>e.style.display=get(C,e.dataset.show)?'':'none')}
@@ -239,9 +274,10 @@ $$('#nav button').forEach(b=>b.onclick=()=>{$$('#nav button').forEach(x=>x.class
 $$('#typesub button').forEach(b=>b.onclick=()=>{$$('#typesub button').forEach(x=>x.classList.toggle('on',x===b));$('s-cat').style.display=b.dataset.s==='cat'?'':'none';$('s-mod').style.display=b.dataset.s==='mod'?'':'none'});
 
 // ---------- display tab
-function renderRanges(){const r=$('ranges');r.innerHTML='';RANGES.forEach(n=>{const c=document.createElement('span');c.className='chip'+(C.view.range==n?' on':'');c.textContent=n+' nm';c.onclick=()=>{save({view:{range:n}});renderRanges();$$('[data-k="view.range"]').forEach(e=>e.value=n)};r.appendChild(c)})}
+function renderRanges(){const r=$('ranges');r.innerHTML='';const cur=toDisp(C.view.range);RANGES.forEach(n=>{const c=document.createElement('span');c.className='chip'+(Math.abs(cur-n)<0.6?' on':'');c.textContent=n+' '+U()[1];c.onclick=()=>{save({view:{range:+toNm(n).toFixed(3)}});renderRanges();refreshUnits()};r.appendChild(c)})}
+function refreshUnits(){$$('[data-dist]').forEach(el=>{el.value=toDisp(get(C,el.dataset.dist))});$$('.uname-long').forEach(e=>e.textContent='In '+U()[2]);$$('.uname-within').forEach(e=>e.textContent='Within this many '+U()[2]);renderRanges()}
 function sweepLbl(){const v=$$('[data-k="view.sweep"]')[0].value;$('sweepv').textContent=`One turn every ${v} seconds`}
-function renderFields(){const f=$('fields');f.innerHTML='';FIELDS.forEach(([k,n])=>{const c=document.createElement('span');c.className='chip'+(C.view.fields[k]?' on':'');c.textContent=n;c.onclick=()=>{const v=!C.view.fields[k];save({view:{fields:{[k]:v}}});c.classList.toggle('on',v)};f.appendChild(c)})}
+function renderFields(){const f=$('fields');f.innerHTML='';FIELDS.forEach(([k,n])=>{const c=document.createElement('span');c.className='chip'+(C.view.show[k]?' on':'');c.textContent=n;c.onclick=()=>{const v=!C.view.show[k];save({view:{show:{[k]:v}}});c.classList.toggle('on',v)};f.appendChild(c)})}
 
 // ---------- aircraft tab
 function renderClasses(){const box=$('classes');box.innerHTML='';CLASSES.forEach(([k,n,d])=>{const row=document.createElement('div');row.className='row';
@@ -296,7 +332,7 @@ async function loadTz(){const t=await (await fetch('/api/timezones')).json();con
  s.value=C.system.tz;s.onchange=()=>{const z=t.find(x=>x.n===s.value);save({system:{tz:s.value,tzPosix:z?z.p:C.system.tzPosix}})}}
 async function loadStatus(){try{const s=await (await fetch('/api/status')).json();
  const up=s.uptime>86400?`${Math.floor(s.uptime/86400)} d ${Math.floor(s.uptime%86400/3600)} h`:`${Math.floor(s.uptime/3600)} h ${Math.floor(s.uptime%3600/60)} min`;
- $('kv').innerHTML='';[["Firmware",s.fw],["Address",`http://${s.host} · ${s.ip}`],["Wi-Fi",`${s.ssid} (${s.rssi} dBm)`],["Data",s.error||`${s.source}, ${s.dataAge<0?'waiting':s.dataAge+' s ago'}`],["Aircraft",`${s.shown} shown of ${s.total} nearby`],["Terrain map",s.map],["Clock",s.timeSet?'synced':'not synced yet'],["Uptime",up]].forEach(([k,v])=>{const a=document.createElement('span'),b=document.createElement('span');a.textContent=k;b.textContent=v;$('kv').append(a,b)})
+ $('kv').innerHTML='';[["Firmware",s.fw],["Address",`http://${s.host} · ${s.ip}`],["Wi-Fi",`${s.ssid} (${s.rssi} dBm)`],["Data",s.error||`${s.source}, ${s.dataAge<0?'waiting':s.dataAge+' s ago'}`],["Planes",`${s.shown} on screen, ${s.seenToday} seen today`],["Map",s.map],["Clock",s.timeSet?'synced':'not synced yet'],["Uptime",up]].forEach(([k,v])=>{const a=document.createElement('span'),b=document.createElement('span');a.textContent=k;b.textContent=v;$('kv').append(a,b)})
  $('hosthint').textContent=`Address: http://${C.system.hostname}.local (restarts when changed)`;
  }catch(e){}}
 async function upload(){const f=$('fw').files[0];if(!f){$('fwmsg').textContent='Choose a .bin file first.';return}
@@ -312,15 +348,16 @@ const cv=$('screen'),cx=cv.getContext('2d'),img=cx.createImageData(400,300);
 async function preview(){if(!document.hidden){try{const t0=performance.now();const b=new Uint8Array(await (await fetch('/api/screen',{cache:'no-store'})).arrayBuffer());
  if(b.length===15000){const d=img.data;for(let i=0;i<120000;i++){const on=b[i>>3]&(128>>(i&7));const o=i*4;d[o]=on?29:200;d[o+1]=on?36:207;d[o+2]=on?32:196;d[o+3]=255}cx.putImageData(img,0,0)}
  $('prevfps').textContent=Math.round(performance.now()-t0)+' ms';}catch(e){}}setTimeout(preview,document.hidden?1500:300)}
-function fmtAlt(a){return a==='ground'?'GND':a==null?'—':a>=18000?'FL'+String(Math.round(a/100)).padStart(3,'0'):a.toLocaleString()+' ft'}
 async function fillList(){if($('acdet').open&&!document.hidden){try{const a=await (await fetch('/api/aircraft')).json();const tb=$('actable');tb.innerHTML='';
- if(!a.length)tb.innerHTML='<tr><td colspan="5" class="hint">No aircraft in range right now.</td></tr>';
- a.forEach(x=>{const tr=document.createElement('tr');if(x.emerg)tr.className='em';[x.call||x.reg||x.hex,x.type||'—',fmtAlt(x.alt),x.gs!=null?x.gs+' kt':'—',x.dist+' nm']
-  .forEach(v=>{const td=document.createElement('td');td.textContent=v;tr.appendChild(td)});tb.appendChild(tr)})}catch(e){}}}
+ if(!a.length)tb.innerHTML='<tr><td colspan="5" class="hint">No planes nearby right now.</td></tr>';
+ a.forEach(x=>{const tr=document.createElement('tr');if(x.emerg)tr.className='em';
+  [x.name+(x.emerg?' ⚠︎':''),x.model,x.alt+(x.vs==='climbing'?' ↑':x.vs==='descending'?' ↓':''),x.dist+' '+x.dir].forEach(v=>{const td=document.createElement('td');td.textContent=v;tr.appendChild(td)});
+  const td=document.createElement('td');const l=document.createElement('a');l.href='https://globe.airplanes.live/?icao='+encodeURIComponent(x.hex);l.target='_blank';l.rel='noopener';l.textContent='Track';l.style.color='var(--acc)';td.appendChild(l);tr.appendChild(td);
+  tb.appendChild(tr)})}catch(e){}}}
 function list(){fillList();setTimeout(list,4000)}
 $('acdet').addEventListener('toggle',fillList);
 async function pill(){try{const s=await (await fetch('/api/status')).json();const p=$('pill');
- if(s.error&&s.dataAge!==0){p.className='pill err';p.innerHTML='<b>●</b> no data';}else{p.className='pill';p.innerHTML=s.dataAge<0?'<b>●</b> waiting for data':`<b>●</b> live · ${s.shown} aircraft`}}catch(e){$('pill').className='pill err';$('pill').innerHTML='<b>●</b> offline'}setTimeout(pill,5000)}
+ if(s.error&&s.dataAge!==0){p.className='pill err';p.innerHTML='<b>●</b> can’t get plane data';}else{p.className='pill';p.innerHTML=s.dataAge<0?'<b>●</b> looking for planes':`<b>●</b> live · ${s.shown} plane${s.shown==1?'':'s'}`}}catch(e){$('pill').className='pill err';$('pill').innerHTML='<b>●</b> offline'}setTimeout(pill,5000)}
 
 // ---------- boot
 (async()=>{

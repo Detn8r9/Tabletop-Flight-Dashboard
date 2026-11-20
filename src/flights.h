@@ -47,6 +47,7 @@ struct FlightStatus {
 void flightsCopy(std::vector<Aircraft> &out);
 FlightStatus flightsStatus();
 uint32_t flightsVersion();   // increments on every successful update
+int flightsSeenToday();      // distinct aircraft shown since local midnight
 
 void flightsStart();         // starts the background fetch task
 void flightsKick();          // fetch now (e.g. after location change)
@@ -60,5 +61,5 @@ void geoDistBearing(double lat1, double lon1, double lat2, double lon2, float &n
 const char *sourceName(uint8_t src);
 
 // Alerts produced by the fetcher for the display/sound.
-struct AlertEvent { char text[40]; uint32_t ms; };
+struct AlertEvent { char text[48]; uint32_t ms; };
 bool alertsPending(AlertEvent &out);   // pops the newest unseen alert

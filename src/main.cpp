@@ -9,7 +9,7 @@
 #include "net.h"
 #include "web.h"
 #include "flights.h"
-#include "terrain.h"
+#include "basemap.h"
 #include "audio.h"
 
 #define PIN_KEY  18
@@ -22,13 +22,13 @@ static const int RANGE_COUNT = sizeof(RANGE_STEPS) / sizeof(RANGE_STEPS[0]);
 void requestReboot(uint32_t delayMs) { rebootAt = millis() + delayMs; }
 
 void onLocationChanged() {
-  terrainRequest();
+  mapRequest();
   flightsKick();
   flightsRefilter();
 }
 
 void onSettingsChanged(uint32_t chg) {
-  if (chg & CHG_MAP) terrainRequest();
+  if (chg & CHG_MAP) mapRequest();
   if (chg & CHG_DATA) flightsKick();
   if (chg & CHG_TZ) netApplyTimezone();
   if (chg & CHG_HOST) requestReboot(1500);   // new .local name needs a restart
@@ -129,7 +129,7 @@ void setup() {
 
   audioInit();
   netStart();
-  terrainStart();
+  mapStart();
   flightsStart();
   webStart();
 

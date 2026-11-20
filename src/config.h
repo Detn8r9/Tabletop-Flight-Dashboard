@@ -5,7 +5,7 @@
 #include <Arduino.h>
 #include <ArduinoJson.h>
 
-#define FW_VERSION "1.0.0"
+#define FW_VERSION "1.1.0"
 #define HOSTNAME_DEFAULT "flightradar"
 #define AP_SSID_PREFIX "FlightRadar-Setup"
 
@@ -25,15 +25,27 @@ enum AcClass : uint8_t {
 };
 extern const char *const AC_CLASS_KEYS[CLS_COUNT];
 
+// What can appear next to each aircraft. The first three are on by default.
 enum LabelField : uint8_t {
-  LF_CALLSIGN = 0, LF_REG, LF_TYPE, LF_ALT, LF_SPEED, LF_HEADING,
-  LF_DIST, LF_VS, LF_SQUAWK, LF_COUNT
+  LF_FLIGHT = 0,  // "Delta 1234"
+  LF_MODEL,       // "Boeing 737"
+  LF_ALT,         // "35,000 ft"
+  LF_SPEED,       // "520 mph"
+  LF_DIR,         // "flying NE"
+  LF_DIST,        // "3.2 mi away"
+  LF_VS,          // climbing / descending arrow
+  LF_CODE,        // raw callsign "DAL1234"
+  LF_REG,         // registration "N123DL"
+  LF_TYPE,        // type code "B738"
+  LF_SQUAWK,      // transponder code
+  LF_COUNT
 };
 extern const char *const LABEL_FIELD_KEYS[LF_COUNT];
 
 enum ModelMode : uint8_t { MODEL_OFF = 0, MODEL_ONLY, MODEL_HIDE };
 enum NightMode : uint8_t { NIGHT_OFF = 0, NIGHT_CALM, NIGHT_BLANK };
-enum MapStyle  : uint8_t { MAP_TERRAIN = 0, MAP_CONTOURS, MAP_BLANK };
+enum MapStyle  : uint8_t { MAP_STREETS = 0, MAP_DETAILED, MAP_BLANK };
+enum Units     : uint8_t { UNITS_US = 0, UNITS_AVIATION, UNITS_METRIC };
 enum Layout    : uint8_t { LAYOUT_PANEL = 0, LAYOUT_FULL };
 enum DataSrc   : uint8_t { SRC_AIRPLANESLIVE = 0, SRC_ADSBLOL, SRC_ADSBFI, SRC_COUNT };
 
@@ -45,15 +57,16 @@ struct Settings {
   String locName;                 // free text, e.g. "Home"
 
   // --- view ---
-  float  rangeNm = 25;            // radius shown on the scope ("zoom")
+  float  rangeNm = 13;            // radius to the range ring ("zoom"), ~15 miles
   float  sweepSec = 4;            // seconds per radar revolution
   float  refreshSec = 2;          // data refresh interval
   uint8_t layout = LAYOUT_PANEL;
-  uint8_t mapStyle = MAP_TERRAIN;
+  uint8_t mapStyle = MAP_STREETS;
+  uint8_t units = UNITS_US;        // ft + mph + miles
   bool   rings = true;
   bool   labels = true;
   bool   leaders = true;          // projected-track line in front of each plane
-  bool   labelFields[LF_COUNT] = {true, false, true, true, false, false, false, false, false};
+  bool   labelFields[LF_COUNT] = {true, true, true, false, false, false, false, false, false, false, false};
 
   // --- filters ---
   bool   classOn[CLS_COUNT] = {true, true, true, true, true, true, true, true, true, true};
