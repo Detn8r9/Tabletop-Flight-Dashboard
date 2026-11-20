@@ -9,6 +9,7 @@
 #include "basemap.h"
 #include "net.h"
 #include "audio.h"
+#include "ui.h"
 #include "tz.h"
 #include "fmt.h"
 #include "web_assets.h"   // generated from web/*.html by tools/embed_web.py
@@ -96,7 +97,7 @@ static void handleStatus() {
   doc["heap"] = ESP.getFreeHeap();
   doc["psram"] = ESP.getFreePsram();
   doc["total"] = fs.total;
-  doc["shown"] = fs.shown;
+  doc["shown"] = uiPlanesOnScreen();   // matches the count on the device
   doc["source"] = sourceName(fs.activeSource);
   doc["dataAge"] = fs.lastOkMs ? (millis() - fs.lastOkMs) / 1000 : -1;
   doc["error"] = fs.error;

@@ -39,6 +39,12 @@ struct Track {
   uint32_t paintMs;
 };
 static std::vector<Track> tracks;
+static volatile int onRadar = 0;   // planes currently drawn on screen
+int uiPlanesOnScreen() { return onRadar; }
+static bool isOnRadar(const char *hex) {
+  for (const Track &t : tracks) if (!strcmp(t.hex, hex)) return true;
+  return false;
+}
 
 // ---------- small drawing helpers
 static void text(int x, int y, const char *s, const GFXfont *f = nullptr, uint16_t col = 1) {
@@ -459,19 +465,16 @@ static void drawPanel(const Settings &s, const std::vector<Aircraft> &list, cons
   drawClock(X, 22, b);
   text(X, 28, d);
 
-  snprintf(b, sizeof b, "%d", fs.shown);
+  snprintf(b, sizeof b, "%d", onRadar);
   text(X, 60, b, &FreeSansBold12pt7b);
   int nx = X + textW(b, &FreeSansBold12pt7b) + 6;
-  text(nx, 45, fs.shown == 1 ? "plane" : "planes");
-  char r[12];
-  fmtRange(r, sizeof r, nmTo(s.units, s.rangeNm));
-  snprintf(b, sizeof b, "in %s %s", r, unitDist(s.units));
-  text(nx, 54, b);
+  text(nx, 45, onRadar == 1 ? "plane" : "planes");
+  text(nx, 54, "on radar");
   gfx->drawFastHLine(302, 67, 98, 1);
 
   // the closest plane, spelled out
   const Aircraft *first = nullptr;
-  for (const Aircraft &a : list) if (a.visible) { first = &a; break; }
+  for (const Aircraft &a : list) if (a.visible && isOnRadar(a.hex)) { first = &a; break; }
   int y = 72;
   if (first) {
     const Aircraft &a = *first;
@@ -493,7 +496,7 @@ static void drawPanel(const Settings &s, const std::vector<Aircraft> &list, cons
   // the next few, one per two lines
   int shown = 0;
   for (const Aircraft &a : list) {
-    if (!a.visible || &a == first) continue;
+    if (!a.visible || &a == first || !isOnRadar(a.hex)) continue;
     if (y > SCREEN_H - 50) break;
     flightName(b, sizeof b, a); fitText(b, CH);
     if (a.emergency) gfx->fillRect(303, y - 1, 97, 19, 1);
@@ -538,9 +541,9 @@ static void drawCorners(const Settings &s, const FlightStatus &fs) {
   box(0, 0, clockW(b) + 12, 26);
   drawClock(6, 20, b);
 
-  snprintf(b, sizeof b, "%d", fs.shown);
+  snprintf(b, sizeof b, "%d", onRadar);
   int w = textW(b, &FreeSansBold12pt7b);
-  const char *word = fs.shown == 1 ? "plane" : "planes";
+  const char *word = onRadar == 1 ? "plane" : "planes";
   int bw = w + 8 + strlen(word) * 6 + 10;
   box(SCREEN_W - bw, 0, bw, 26);
   text(SCREEN_W - bw + 5, 20, b, &FreeSansBold12pt7b);
@@ -738,6 +741,7 @@ bool uiFrame() {
   tracks.erase(std::remove_if(tracks.begin(), tracks.end(),
                               [&](const Track &t) { return t.paintMs == 0 || now - t.paintMs > ttl; }),
                tracks.end());
+  onRadar = (int)tracks.size();
   std::sort(tracks.begin(), tracks.end(), [](const Track &a, const Track &b) {
     if (a.emergency != b.emergency) return a.emergency;
     return a.dist < b.dist;

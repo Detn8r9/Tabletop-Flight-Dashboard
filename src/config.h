@@ -5,7 +5,7 @@
 #include <Arduino.h>
 #include <ArduinoJson.h>
 
-#define FW_VERSION "1.1.2"
+#define FW_VERSION "1.1.3"
 #define HOSTNAME_DEFAULT "flightradar"
 #define AP_SSID_PREFIX "FlightRadar-Setup"
 
