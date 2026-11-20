@@ -20,7 +20,7 @@ const char *const AC_CLASS_KEYS[CLS_COUNT] = {
   "glider", "balloon", "drone", "military", "unknown"};
 
 const char *const LABEL_FIELD_KEYS[LF_COUNT] = {
-  "callsign", "reg", "type", "alt", "speed", "heading", "dist", "vs", "squawk"};
+  "flight", "model", "alt", "speed", "dir", "dist", "vs", "code", "reg", "type", "squawk"};
 
 static Preferences prefs;
 
@@ -41,7 +41,8 @@ void configToJson(const Settings &s, JsonObject o) {
   v["rings"] = s.rings;
   v["labels"] = s.labels;
   v["leaders"] = s.leaders;
-  JsonObject lf = v["fields"].to<JsonObject>();
+  v["units"] = s.units;
+  JsonObject lf = v["show"].to<JsonObject>();
   for (int i = 0; i < LF_COUNT; i++) lf[LABEL_FIELD_KEYS[i]] = s.labelFields[i];
 
   JsonObject f = o["filter"].to<JsonObject>();
@@ -152,7 +153,8 @@ uint32_t configFromJson(Settings &s, JsonObjectConst o) {
     setIf(v["rings"], s.rings);
     setIf(v["labels"], s.labels);
     setIf(v["leaders"], s.leaders);
-    JsonObjectConst lf = v["fields"];
+    setU8(v["units"], s.units, 0, 2);
+    JsonObjectConst lf = v["show"];
     for (int i = 0; i < LF_COUNT && !lf.isNull(); i++) setIf(lf[LABEL_FIELD_KEYS[i]], s.labelFields[i]);
   }
   JsonObjectConst f = o["filter"];
@@ -252,5 +254,5 @@ void wifiCredsSave(const String &ssid, const String &pass) {
 void factoryReset() {
   prefs.begin("fr", false);  prefs.clear(); prefs.end();
   prefs.begin("wifi", false); prefs.clear(); prefs.end();
-  LittleFS.format();   // cached terrain maps (they reveal the location)
+  LittleFS.format();   // cached maps (they reveal the location)
 }

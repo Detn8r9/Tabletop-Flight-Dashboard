@@ -2,7 +2,8 @@
 #include "display.h"
 #include "config.h"
 #include "flights.h"
-#include "terrain.h"
+#include "basemap.h"
+#include "fmt.h"
 #include "net.h"
 #include <qrcode.h>
 #include <Fonts/FreeSansBold9pt7b.h>
@@ -34,7 +35,7 @@ struct Track {
   float track, gs, dist;
   bool trackValid, emergency;
   uint8_t cls;
-  char l1[20], l2[20];
+  char lines[3][20];    // label text, up to 3 lines
   uint32_t paintMs;
 };
 static std::vector<Track> tracks;
@@ -118,9 +119,9 @@ static void buildBase(const Settings &s) {
   scopeCenter(s, cx, cy);
   base->fillScreen(0);
 
-  // terrain fills the whole screen
+  // the street map fills the whole screen
   static uint8_t *map = (uint8_t *)heap_caps_malloc(MAP_BYTES, MALLOC_CAP_SPIRAM);
-  if (s.mapStyle != MAP_BLANK && terrainCopy(map)) {
+  if (s.mapStyle != MAP_BLANK && mapCopy(map)) {
     uint8_t *dst = base->getBuffer();
     for (int y = 0; y < SCREEN_H; y++) memcpy(dst + y * (SCREEN_W / 8), map + y * MAP_ROW_BYTES, SCREEN_W / 8);
   }
@@ -132,9 +133,11 @@ static void buildBase(const Settings &s) {
       base->drawPixel(cx + lroundf(rr * sinf(t)), cy - lroundf(rr * cosf(t)), 1);
     }
   };
-  auto ringLabel = [&](float rr, float d) {
-    char b[12];
+  const float rangeDisp = nmTo(s.units, s.rangeNm);   // range in the user's units
+  auto ringLabel = [&](float rr, float d, bool unit) {
+    char b[16];
     fmtRange(b, sizeof b, d);
+    if (unit) { strlcat(b, " ", sizeof b); strlcat(b, unitDist(s.units), sizeof b); }
     int lx = cx + (int)(rr * 0.7071f) + 2, ly = cy + (int)(rr * 0.7071f) - 3;
     int w = strlen(b) * 6;
     base->fillRect(lx - 1, ly - 1, w + 1, 9, 0);
@@ -147,18 +150,18 @@ static void buildBase(const Settings &s) {
   // dotted range rings all the way out to the corners
   const float reach = reachPx(cx, cy);
   if (s.rings) {
-    float step = niceStep(s.rangeNm);
-    for (float d = step; d / s.rangeNm * R < reach; d += step) {
-      float rr = d / s.rangeNm * R;
+    float step = niceStep(rangeDisp);
+    for (float d = step; d / rangeDisp * R < reach; d += step) {
+      float rr = d / rangeDisp * R;
       if (fabsf(rr - R) < 4) continue;   // the range ring itself is drawn solid
       ringPx(rr, 3);
-      ringLabel(rr, d);
+      ringLabel(rr, d, false);
     }
   }
 
   // the selected range: a solid ring with a compass rose on it
   base->drawCircle(cx, cy, R, 1);
-  ringLabel(R, s.rangeNm);
+  ringLabel(R, rangeDisp, true);
   for (int a = 0; a < 360; a += 10) {
     float t = radians(a);
     int len = a % 30 == 0 ? 7 : 3;
@@ -174,17 +177,26 @@ static void buildBase(const Settings &s) {
     base->setCursor(x, y);
     base->print(card[i]);
   }
-  // home marker
-  base->drawFastHLine(cx - 4, cy, 9, 1);
-  base->drawFastVLine(cx, cy - 4, 9, 1);
-  base->drawCircle(cx, cy, 2, 0);
-  base->drawPixel(cx, cy, 1);
+  // home: a little house
+  base->fillRect(cx - 7, cy - 8, 15, 15, 0);
+  base->fillTriangle(cx - 6, cy - 1, cx, cy - 7, cx + 6, cy - 1, 1);
+  base->drawRect(cx - 4, cy - 1, 9, 7, 1);
+  base->fillRect(cx - 1, cy + 2, 3, 4, 1);
+
+  // map credit, required by OpenStreetMap
+  if (s.mapStyle != MAP_BLANK) {
+    const char *credit = "(c) OpenStreetMap";
+    int y = SCREEN_H - 9, x = s.layout == LAYOUT_FULL ? SCREEN_W / 2 - 51 : 2;
+    base->fillRect(x - 1, y - 1, strlen(credit) * 6 + 1, 9, 0);
+    base->setCursor(x, y);
+    base->print(credit);
+  }
 }
 
 static uint32_t baseKeyFor(const Settings &s) {
-  uint32_t k = terrainVersion() * 2654435761u;
+  uint32_t k = mapVersion() * 2654435761u;
   k ^= (uint32_t)(s.rangeNm * 100) * 40503u;
-  k ^= (s.layout << 1) ^ (s.rings << 2) ^ (s.mapStyle << 4);
+  k ^= (s.layout << 1) ^ (s.rings << 2) ^ (s.mapStyle << 4) ^ (s.units << 7);
   return k;
 }
 
@@ -232,40 +244,54 @@ static void drawSweep(int cx, int cy, float beam) {
 }
 
 // ---------- aircraft
-static void fmtAlt(char *b, size_t n, const Aircraft &a) {
-  if (a.ground) snprintf(b, n, "GND");
-  else if (!a.altValid) snprintf(b, n, "---");
-  else if (a.alt >= 18000) snprintf(b, n, "FL%03d", (int)((a.alt + 50) / 100));
-  else snprintf(b, n, "%d", (int)((a.alt + 50) / 100 * 100));
-}
-
 // Adds a token if the line stays short enough to read; whole tokens only.
-static const size_t LABEL_MAX = 17;
-static void appendTok(char *line, size_t n, const char *tok) {
-  if (!tok[0]) return;
+static const size_t LABEL_MAX = 18;
+static bool appendTok(char *line, size_t n, const char *tok) {
+  if (!tok || !tok[0]) return true;
   size_t len = strlen(line), add = strlen(tok) + (len ? 1 : 0);
-  if (len + add > LABEL_MAX) return;
+  if (len + add > LABEL_MAX) return false;
   if (len) strlcat(line, " ", n);
   strlcat(line, tok, n);
+  return true;
 }
 
+// Builds up to three short lines, e.g.
+//   Delta 1234
+//   Boeing 737
+//   35,000 ft ^ 520 mph
 static void buildLabel(const Settings &s, const Aircraft &a, Track &t) {
-  char tok[16];
-  t.l1[0] = t.l2[0] = 0;
+  for (auto &l : t.lines) l[0] = 0;
   const bool *f = s.labelFields;
-  if (f[LF_CALLSIGN]) appendTok(t.l1, sizeof t.l1, a.call[0] ? a.call : (a.reg[0] ? a.reg : a.hex));
-  if (f[LF_REG] && a.reg[0] && strcmp(a.reg, a.call)) appendTok(t.l1, sizeof t.l1, a.reg);
-  if (f[LF_TYPE]) appendTok(t.l1, sizeof t.l1, a.type);
-  if (a.emergency) appendTok(t.l2, sizeof t.l2, a.squawk[0] ? a.squawk : "EMRG");
-  if (f[LF_ALT]) { fmtAlt(tok, sizeof tok, a); appendTok(t.l2, sizeof t.l2, tok); }
-  if (f[LF_VS] && a.vsValid && abs(a.vs) >= 300) {
-    snprintf(tok, sizeof tok, "%c%d", a.vs > 0 ? 0x18 : 0x19, abs(a.vs) / 100 * 100);
-    appendTok(t.l2, sizeof t.l2, tok);
+  char tok[24];
+  int li = 0;
+  auto put = [&](const char *tk) {
+    if (!tk || !tk[0]) return;
+    while (li < 3 && !appendTok(t.lines[li], sizeof t.lines[li], tk)) li++;
+  };
+  auto newLine = [&]() { if (li < 3 && t.lines[li][0]) li++; };
+
+  if (f[LF_FLIGHT]) { flightName(tok, sizeof tok, a); put(tok); }
+  if (f[LF_CODE] && a.call[0]) put(a.call);
+  if (f[LF_REG] && a.reg[0] && strcmp(a.reg, a.call)) put(a.reg);
+  newLine();
+  if (f[LF_MODEL]) put(modelName(a));
+  if (f[LF_TYPE] && a.type[0]) put(a.type);
+  newLine();
+  if (a.emergency) { snprintf(tok, sizeof tok, "EMERGENCY"); put(tok); }
+  if (f[LF_ALT]) {
+    fmtAltitude(tok, sizeof tok, a, s.units);
+    if (f[LF_VS] && a.vsValid && abs(a.vs) >= 300 && !a.ground) {
+      size_t l = strlen(tok);
+      if (l + 2 < sizeof tok) { tok[l] = ' '; tok[l + 1] = a.vs > 0 ? 0x18 : 0x19; tok[l + 2] = 0; }
+    }
+    put(tok);
+  } else if (f[LF_VS] && a.vsValid && abs(a.vs) >= 300) {
+    put(a.vs > 0 ? "climbing" : "descending");
   }
-  if (f[LF_SPEED] && a.gsValid) { snprintf(tok, sizeof tok, "%dkt", (int)a.gs); appendTok(t.l2, sizeof t.l2, tok); }
-  if (f[LF_HEADING] && a.trackValid) { snprintf(tok, sizeof tok, "%03d%c", (int)a.track, 0xF8); appendTok(t.l2, sizeof t.l2, tok); }
-  if (f[LF_DIST]) { snprintf(tok, sizeof tok, "%.1fnm", a.distNm); appendTok(t.l2, sizeof t.l2, tok); }
-  if (f[LF_SQUAWK] && a.squawk[0] && !a.emergency) appendTok(t.l2, sizeof t.l2, a.squawk);
+  if (f[LF_SPEED]) { fmtSpeed(tok, sizeof tok, a, s.units); put(tok); }
+  if (f[LF_DIR] && a.trackValid) { snprintf(tok, sizeof tok, "to %s", compass8(a.track)); put(tok); }
+  if (f[LF_DIST]) { fmtDist(tok, sizeof tok, a.distNm, s.units); put(tok); }
+  if (f[LF_SQUAWK] && a.squawk[0]) { snprintf(tok, sizeof tok, "sq %s", a.squawk); put(tok); }
 }
 
 static void projectXY(const Settings &s, int cx, int cy, double lat, double lon, float &x, float &y) {
@@ -276,6 +302,45 @@ static void projectXY(const Settings &s, int cx, int cy, double lat, double lon,
   y = cy - dN * pxPerM;
 }
 
+// Rotated polygon helpers. Shapes are defined pointing north (+y = forward).
+struct Pt { float f, s; };   // forward, sideways (+ = right wing)
+static void fillQuad(int x, int y, float sx, float sy, float k, Pt a, Pt b, Pt c, Pt d) {
+  const float px = -sy, py = sx;
+  auto X = [&](Pt p) { return (int)lroundf(x + (sx * p.f + px * p.s) * k); };
+  auto Y = [&](Pt p) { return (int)lroundf(y + (sy * p.f + py * p.s) * k); };
+  gfx->fillTriangle(X(a), Y(a), X(b), Y(b), X(c), Y(c), 1);
+  gfx->fillTriangle(X(a), Y(a), X(c), Y(c), X(d), Y(d), 1);
+}
+
+// A little airliner silhouette: fuselage, swept wings, tailplane.
+static void drawPlane(int x, int y, float trackDeg, float k) {
+  const float tr = radians(trackDeg), sx = sinf(tr), sy = -cosf(tr);
+  fillQuad(x, y, sx, sy, k, {7.5f, 0}, {5.5f, 1.3f}, {-6, 1.0f}, {-6, -1.0f});        // nose + body (right half)
+  fillQuad(x, y, sx, sy, k, {7.5f, 0}, {5.5f, -1.3f}, {-6, -1.0f}, {-6, 1.0f});       // body (left half)
+  fillQuad(x, y, sx, sy, k, {2.5f, 0.8f}, {-1.5f, 7.5f}, {-3, 7.5f}, {-1.5f, 0.8f});  // right wing
+  fillQuad(x, y, sx, sy, k, {2.5f, -0.8f}, {-1.5f, -7.5f}, {-3, -7.5f}, {-1.5f, -0.8f});
+  fillQuad(x, y, sx, sy, k, {-4.5f, 0.6f}, {-6.5f, 3.5f}, {-7.5f, 3.5f}, {-6.5f, 0.6f});  // tailplane
+  fillQuad(x, y, sx, sy, k, {-4.5f, -0.6f}, {-6.5f, -3.5f}, {-7.5f, -3.5f}, {-6.5f, -0.6f});
+}
+
+// Helicopter: round cabin, tail boom, tail rotor and a spinning main rotor.
+static void drawHeli(int x, int y, float trackDeg, uint32_t now) {
+  const float tr = radians(trackDeg), sx = sinf(tr), sy = -cosf(tr), px = -sy, py = sx;
+  auto P = [&](float f, float s, int &ox, int &oy) { ox = lroundf(x + sx * f + px * s); oy = lroundf(y + sy * f + py * s); };
+  int ax, ay, bx, by;
+  gfx->fillCircle(lroundf(x + sx * 1.5f), lroundf(y + sy * 1.5f), 3, 1);   // cabin
+  P(-1, 0, ax, ay); P(-8, 0, bx, by);
+  gfx->drawLine(ax, ay, bx, by, 1);                                          // tail boom
+  P(-8, -2, ax, ay); P(-8, 2, bx, by);
+  gfx->drawLine(ax, ay, bx, by, 1);                                          // tail rotor
+  const float rot = (now % 1000) / 1000.0f * PI;                             // rotor spins
+  for (int i = 0; i < 2; i++) {
+    float r = rot + i * PI / 2;
+    int ex = lroundf(8 * cosf(r)), ey = lroundf(8 * sinf(r));
+    gfx->drawLine(x - ex, y - ey, x + ex, y + ey, 1);
+  }
+}
+
 static void drawSymbol(const Track &t, float pxPerNm, bool leaders, uint32_t now) {
   const int x = lroundf(t.x), y = lroundf(t.y);
   const float tr = radians(t.track);
@@ -283,39 +348,21 @@ static void drawSymbol(const Track &t, float pxPerNm, bool leaders, uint32_t now
 
   if (leaders && t.trackValid && t.gs > 30) {
     float len = constrain(t.gs / 60.0f * pxPerNm, 4.0f, 36.0f);
-    gfx->drawLine(x, y, lroundf(x + sx * (len + 4)), lroundf(y + sy * (len + 4)), 1);
+    gfx->drawLine(lroundf(x + sx * 8), lroundf(y + sy * 8), lroundf(x + sx * (len + 9)), lroundf(y + sy * (len + 9)), 1);
   }
-  gfx->fillCircle(x, y, 6, 0);   // clear a halo so the symbol reads over the map
+  gfx->fillCircle(x, y, 9, 0);   // clear a halo so the icon reads over the map
+  const float heading = t.trackValid ? t.track : 0;
   if (t.cls == CLS_HELI) {
-    gfx->fillCircle(x, y, 3, 1);
-    gfx->drawFastHLine(x - 5, y, 11, 1);
-  } else if (!t.trackValid) {
-    gfx->fillRect(x - 2, y - 2, 5, 5, 1);
+    drawHeli(x, y, heading, now);
   } else {
-    // notched dart pointing along the track
-    const float px = -sy, py = sx;   // perpendicular
-    auto P = [&](float fwd, float side, int &ox, int &oy) {
-      ox = lroundf(x + sx * fwd + px * side);
-      oy = lroundf(y + sy * fwd + py * side);
-    };
-    int tx, ty, lx, ly, nx, ny, rx, ry;
-    P(6, 0, tx, ty);
-    P(-4, 4.5f, lx, ly);
-    P(-1.5f, 0, nx, ny);
-    P(-4, -4.5f, rx, ry);
-    if (t.cls == CLS_MILITARY) {
-      gfx->drawLine(tx, ty, lx, ly, 1); gfx->drawLine(lx, ly, nx, ny, 1);
-      gfx->drawLine(nx, ny, rx, ry, 1); gfx->drawLine(rx, ry, tx, ty, 1);
-    } else {
-      gfx->fillTriangle(tx, ty, lx, ly, nx, ny, 1);
-      gfx->fillTriangle(tx, ty, nx, ny, rx, ry, 1);
-    }
+    float k = (t.cls == CLS_LIGHT || t.cls == CLS_GLIDER || t.cls == CLS_DRONE) ? 0.8f : 1.0f;
+    drawPlane(x, y, heading, k);
   }
-  if (t.emergency && (now / 400) % 2) gfx->drawCircle(x, y, 9, 1);
+  if (t.emergency && (now / 400) % 2) gfx->drawCircle(x, y, 11, 1);
 
   // radar "ping": a ring that expands for a moment after the beam passes
   uint32_t age = now - t.paintMs;
-  if (age < 350) gfx->drawCircle(x, y, 7 + age / 35, 1);
+  if (age < 350) gfx->drawCircle(x, y, 10 + age / 35, 1);
 }
 
 struct Rect { int x, y, w, h; };
@@ -327,24 +374,25 @@ static void drawLabels(const Settings &s, int cx, int cy) {
   std::vector<Rect> placed;
   placed.reserve(tracks.size() * 2);
   // labels must not cover other aircraft
-  for (const Track &t : tracks) placed.push_back({(int)lroundf(t.x) - 6, (int)lroundf(t.y) - 6, 13, 13});
+  for (const Track &t : tracks) placed.push_back({(int)lroundf(t.x) - 8, (int)lroundf(t.y) - 8, 17, 17});
   if (s.layout == LAYOUT_FULL) {   // corner info boxes
-    placed.push_back({0, 0, 84, 27});
-    placed.push_back({SCREEN_W - 100, 0, 100, 27});
-    placed.push_back({0, SCREEN_H - 16, 110, 16});
-    placed.push_back({SCREEN_W - 60, SCREEN_H - 16, 60, 16});
+    placed.push_back({0, 0, 110, 27});
+    placed.push_back({SCREEN_W - 110, 0, 110, 27});
+    placed.push_back({0, SCREEN_H - 16, 130, 16});
+    placed.push_back({SCREEN_W - 80, SCREEN_H - 16, 80, 16});
   }
   const int maxX = s.layout == LAYOUT_PANEL ? 298 : SCREEN_W - 1;
   for (size_t i = 0; i < tracks.size(); i++) {
     const Track &t = tracks[i];
-    int lines = (t.l1[0] ? 1 : 0) + (t.l2[0] ? 1 : 0);
+    int lines = 0, w = 0;
+    for (auto &l : t.lines) if (l[0]) { lines++; w = max(w, (int)strlen(l) * 6); }
     if (!lines) continue;
-    int w = max(strlen(t.l1), strlen(t.l2)) * 6 + 2, h = lines * 9 + 1;
+    w += 2;
+    const int h = lines * 9 + 1;
     const int x = lroundf(t.x), y = lroundf(t.y);
-    const int cand[8][2] = {{9, -h - 1}, {9, 3},        {-9 - w, -h - 1}, {-9 - w, 3},
-                            {-w / 2, -h - 9}, {-w / 2, 9}, {14, -h / 2},     {-14 - w, -h / 2}};
-    bool done = false;
-    for (int k = 0; k < 8 && !done; k++) {
+    const int cand[8][2] = {{11, -h / 2},  {-11 - w, -h / 2}, {10, -h - 2},  {10, 3},
+                            {-10 - w, -h - 2}, {-10 - w, 3}, {-w / 2, -h - 11}, {-w / 2, 11}};
+    for (int k = 0; k < 8; k++) {
       Rect r = {x + cand[k][0], y + cand[k][1], w, h};
       if (r.x < 1 || r.y < 1 || r.x + r.w > maxX || r.y + r.h > SCREEN_H - 1) continue;
       bool clash = false;
@@ -353,86 +401,129 @@ static void drawLabels(const Settings &s, int cx, int cy) {
       placed.push_back(r);
       gfx->fillRect(r.x, r.y, r.w, r.h, t.emergency ? 1 : 0);
       int ty = r.y + 1;
-      if (t.l1[0]) { text(r.x + 1, ty, t.l1, nullptr, t.emergency ? 0 : 1); ty += 9; }
-      if (t.l2[0]) text(r.x + 1, ty, t.l2, nullptr, t.emergency ? 0 : 1);
-      done = true;
+      for (auto &l : t.lines)
+        if (l[0]) { text(r.x + 1, ty, l, nullptr, t.emergency ? 0 : 1); ty += 9; }
+      break;
     }
   }
 }
 
 // ---------- side panel / corner info
-static void clockStr(char *b, size_t n, char *date, size_t dn) {
+static void clockStr(const Settings &s, char *b, size_t n, char *date, size_t dn) {
   struct tm tm;
   if (getLocalTime(&tm, 0)) {
-    strftime(b, n, "%H:%M", &tm);
-    if (date) strftime(date, dn, "%a %d %b", &tm);
+    if (s.units == UNITS_METRIC) strftime(b, n, "%H:%M", &tm);
+    else {
+      int h = tm.tm_hour % 12;
+      snprintf(b, n, "%d:%02d", h ? h : 12, tm.tm_min);
+    }
+    if (date) strftime(date, dn, "%a %b %d", &tm);
+    if (s.units != UNITS_METRIC && n > 8) strlcat(b, tm.tm_hour < 12 ? "a" : "p", n);   // marker for AM/PM
   } else {
     snprintf(b, n, "--:--");
     if (date) date[0] = 0;
   }
 }
 
+// Clock strings end in 'a'/'p' for AM/PM: draw the time big, "AM"/"PM" small.
+static int clockW(const char *b) {
+  char t[12];
+  strlcpy(t, b, sizeof t);
+  size_t l = strlen(t);
+  bool ap = l && (t[l - 1] == 'a' || t[l - 1] == 'p');
+  if (ap) t[l - 1] = 0;
+  return textW(t, &FreeSansBold12pt7b) + (ap ? 16 : 0);
+}
+static void drawClock(int x, int y, const char *b) {
+  char t[12];
+  strlcpy(t, b, sizeof t);
+  size_t l = strlen(t);
+  char ap = l ? t[l - 1] : 0;
+  if (ap == 'a' || ap == 'p') t[l - 1] = 0; else ap = 0;
+  text(x, y, t, &FreeSansBold12pt7b);
+  if (ap) text(x + textW(t, &FreeSansBold12pt7b) + 3, y - 7, ap == 'a' ? "AM" : "PM");
+}
+
+static void fitText(char *s, int maxChars) {
+  if ((int)strlen(s) > maxChars) s[maxChars] = 0;
+}
+
 static void drawPanel(const Settings &s, const std::vector<Aircraft> &list, const FlightStatus &fs) {
-  const int X = 306;
-  char b[40], d[24];
+  const int X = 306, CH = 15;   // 15 characters fit across the panel
+  char b[48], d[32];
   // the panel sits on top of the map
   gfx->fillRect(300, 0, SCREEN_W - 300, SCREEN_H, 0);
   gfx->drawFastVLine(300, 0, SCREEN_H, 1);
   gfx->drawFastVLine(302, 0, SCREEN_H, 1);
-  clockStr(b, sizeof b, d, sizeof d);
-  text(X, 22, b, &FreeSansBold12pt7b);
-  text(X, 36, d);
+  clockStr(s, b, sizeof b, d, sizeof d);
+  drawClock(X, 22, b);
+  text(X, 28, d);
 
   snprintf(b, sizeof b, "%d", fs.shown);
-  text(X, 62, b, &FreeSansBold12pt7b);
-  text(X + textW(b, &FreeSansBold12pt7b) + 8, 55, "AIRCRAFT");
+  text(X, 60, b, &FreeSansBold12pt7b);
+  int nx = X + textW(b, &FreeSansBold12pt7b) + 6;
+  text(nx, 45, fs.shown == 1 ? "plane" : "planes");
   char r[12];
-  fmtRange(r, sizeof r, s.rangeNm);
-  snprintf(b, sizeof b, "RANGE %s NM", r);
-  text(X, 68, b);
-  gfx->drawFastHLine(302, 80, 98, 1);
+  fmtRange(r, sizeof r, nmTo(s.units, s.rangeNm));
+  snprintf(b, sizeof b, "in %s %s", r, unitDist(s.units));
+  text(nx, 54, b);
+  gfx->drawFastHLine(302, 67, 98, 1);
 
-  // nearest traffic
-  int y = 86, shown = 0;
+  // the closest plane, spelled out
+  const Aircraft *first = nullptr;
+  for (const Aircraft &a : list) if (a.visible) { first = &a; break; }
+  int y = 72;
+  if (first) {
+    const Aircraft &a = *first;
+    text(X, y, a.emergency ? "! EMERGENCY !" : "CLOSEST");
+    y += 11;
+    flightName(b, sizeof b, a); fitText(b, CH);
+    text(X, y, b); y += 9;
+    snprintf(b, sizeof b, "%s", modelName(a)); fitText(b, CH);
+    text(X, y, b); y += 9;
+    fmtAltitude(b, sizeof b, a, s.units); text(X, y, b); y += 9;
+    char dist[16];
+    fmtDist(dist, sizeof dist, a.distNm, s.units);
+    snprintf(b, sizeof b, "%s %s", dist, compass8(a.bearing)); fitText(b, CH);
+    text(X, y, b); y += 9;
+    gfx->drawFastHLine(302, y + 2, 98, 1);
+    y += 7;
+  }
+
+  // the next few, one per two lines
+  int shown = 0;
   for (const Aircraft &a : list) {
-    if (!a.visible) continue;
-    if (y > SCREEN_H - 40) break;
-    const char *id = a.call[0] ? a.call : (a.reg[0] ? a.reg : a.hex);
-    if (a.emergency) {
-      gfx->fillRect(303, y - 1, 97, 19, 1);
-      text(X, y, id, nullptr, 0);
-      snprintf(b, sizeof b, "SQK %s", a.squawk[0] ? a.squawk : "EMRG");
-      text(X, y + 9, b, nullptr, 0);
-    } else {
-      text(X, y, id);
-      if (a.type[0]) text(399 - strlen(a.type) * 6, y, a.type);
-      char alt[10];
-      fmtAlt(alt, sizeof alt, a);
-      snprintf(b, sizeof b, "%s %4.1fnm", alt, a.distNm);
-      text(X, y + 9, b);
-    }
-    y += 22;
+    if (!a.visible || &a == first) continue;
+    if (y > SCREEN_H - 50) break;
+    flightName(b, sizeof b, a); fitText(b, CH);
+    if (a.emergency) gfx->fillRect(303, y - 1, 97, 19, 1);
+    text(X, y, b, nullptr, a.emergency ? 0 : 1);
+    char alt[20], dist[16];
+    fmtAltitude(alt, sizeof alt, a, s.units);
+    fmtDist(dist, sizeof dist, a.distNm, s.units);
+    snprintf(b, sizeof b, "%s", alt);
+    if ((int)(strlen(alt) + strlen(dist) + 1) <= CH) snprintf(b, sizeof b, "%-*s%s", CH - (int)strlen(dist), alt, dist);
+    text(X, y + 9, b, nullptr, a.emergency ? 0 : 1);
+    y += 21;
     shown++;
   }
-  if (!shown) text(X, y, fs.lastOkMs ? "no traffic" : "");
-
-  // status footer
-  gfx->drawFastHLine(302, SCREEN_H - 30, 98, 1);
-  String ts = terrainStatus();
-  if (!fs.error.isEmpty() && fs.failures > 0) {
-    text(X, SCREEN_H - 26, "NO DATA");
-    text(X, SCREEN_H - 17, "retrying...");
-  } else if (fs.lastOkMs) {
-    uint32_t age = (millis() - fs.lastOkMs) / 1000;
-    snprintf(b, sizeof b, "LIVE %lus", (unsigned long)age);
-    text(X, SCREEN_H - 26, b);
-    text(X, SCREEN_H - 17, sourceName(fs.activeSource));
-  } else {
-    text(X, SCREEN_H - 26, "CONNECTING");
+  if (!first) {
+    text(X, y, fs.lastOkMs ? "No planes" : "Looking for");
+    text(X, y + 9, fs.lastOkMs ? "nearby now" : "planes...");
   }
-  if (ts.startsWith("downloading")) text(X, SCREEN_H - 8, ("map " + ts.substring(ts.lastIndexOf(' ') + 1)).c_str());
-  else if (ts.startsWith("drawing")) text(X, SCREEN_H - 8, "drawing map");
-  else text(X, SCREEN_H - 8, netIp().c_str());
+
+  // footer: plain-English status
+  gfx->drawFastHLine(302, SCREEN_H - 30, 98, 1);
+  String ms = mapStatus();
+  snprintf(b, sizeof b, "Seen today: %d", flightsSeenToday());
+  text(X, SCREEN_H - 26, b);
+  if (fs.failures > 0 && !fs.lastOkMs) text(X, SCREEN_H - 17, "No internet?");
+  else if (fs.failures > 2) text(X, SCREEN_H - 17, "Data delayed");
+  else if (ms.startsWith("downloading")) text(X, SCREEN_H - 17, ("Map " + ms.substring(ms.lastIndexOf(' ') + 1)).c_str());
+  else if (ms.startsWith("drawing")) text(X, SCREEN_H - 17, "Drawing map");
+  else if (ms.startsWith("error")) text(X, SCREEN_H - 17, "Map unavailable");
+  else text(X, SCREEN_H - 17, fs.lastOkMs ? "Live" : "Starting...");
+  text(X, SCREEN_H - 8, netIp().c_str());
 }
 
 // a framed white box, so overlay text reads cleanly over the map
@@ -443,24 +534,24 @@ static void box(int x, int y, int w, int h) {
 
 static void drawCorners(const Settings &s, const FlightStatus &fs) {
   char b[32];
-  clockStr(b, sizeof b, nullptr, 0);
-  int w = textW(b, &FreeSansBold12pt7b);
-  box(0, 0, w + 12, 26);
-  text(6, 20, b, &FreeSansBold12pt7b);
+  clockStr(s, b, sizeof b, nullptr, 0);
+  box(0, 0, clockW(b) + 12, 26);
+  drawClock(6, 20, b);
 
   snprintf(b, sizeof b, "%d", fs.shown);
-  w = textW(b, &FreeSansBold12pt7b);
-  int bw = w + 8 + 48 + 10;
+  int w = textW(b, &FreeSansBold12pt7b);
+  const char *word = fs.shown == 1 ? "plane" : "planes";
+  int bw = w + 8 + strlen(word) * 6 + 10;
   box(SCREEN_W - bw, 0, bw, 26);
   text(SCREEN_W - bw + 5, 20, b, &FreeSansBold12pt7b);
-  text(SCREEN_W - 53, 10, "AIRCRAFT");
+  text(SCREEN_W - strlen(word) * 6 - 5, 10, word);
 
   char r[12];
-  fmtRange(r, sizeof r, s.rangeNm);
-  snprintf(b, sizeof b, "RANGE %s NM", r);
+  fmtRange(r, sizeof r, nmTo(s.units, s.rangeNm));
+  snprintf(b, sizeof b, "Ring: %s %s", r, unitDist(s.units));
   box(0, SCREEN_H - 15, strlen(b) * 6 + 8, 15);
   text(4, SCREEN_H - 11, b);
-  const char *st = fs.failures > 0 ? "NO DATA" : (fs.lastOkMs ? "LIVE" : "WAIT");
+  const char *st = fs.failures > 2 ? "Data delayed" : (fs.lastOkMs ? "Live" : "Starting");
   int sw = strlen(st) * 6 + 8;
   box(SCREEN_W - sw, SCREEN_H - 15, sw, 15);
   text(SCREEN_W - sw + 4, SCREEN_H - 11, st);
@@ -515,9 +606,9 @@ static void pageInfo(const Settings &s, bool locating) {
     text(16, 182, b);
   }
   text(16, 210, "Buttons:");
-  text(16, 222, " KEY  = zoom in    BOOT = zoom out");
-  text(16, 234, " hold BOOT = labels on/off");
-  text(16, 246, " hold KEY 10 s = factory reset");
+  text(16, 222, " KEY = zoom in      BOOT = zoom out");
+  text(16, 234, " hold BOOT = show/hide plane names");
+  text(16, 246, " hold KEY = this screen (10 s: reset)");
   drawQr(292, 60, 3, ("http://" + netIp() + "/").c_str());
 }
 
@@ -660,11 +751,11 @@ bool uiFrame() {
   else drawCorners(s, fs);
 
   // map / data notices inside the scope
-  if (!terrainReady() && s.mapStyle != MAP_BLANK) {
-    String ts = terrainStatus();
-    if (ts.startsWith("downloading") || ts.startsWith("drawing")) label(cx - 45, cy + R - 40, "drawing map...");
+  if (!mapReady() && s.mapStyle != MAP_BLANK) {
+    String ts = mapStatus();
+    if (ts.startsWith("downloading") || ts.startsWith("drawing")) label(cx - 51, cy + R - 40, "Drawing the map...");
   }
-  if (!fs.lastOkMs && fs.failures == 0) label(cx - 48, cy + 20, "waiting for data");
+  if (!fs.lastOkMs) label(cx - 60, cy + 22, fs.failures ? "Can't reach planes data" : "Looking for planes...");
 
   // alert banner
   AlertEvent ev;

@@ -6,10 +6,11 @@
 #include "config.h"
 #include "display.h"
 #include "flights.h"
-#include "terrain.h"
+#include "basemap.h"
 #include "net.h"
 #include "audio.h"
 #include "tz.h"
+#include "fmt.h"
 #include "web_assets.h"   // generated from web/*.html by tools/embed_web.py
 
 void onSettingsChanged(uint32_t chg);   // main.cpp
@@ -99,7 +100,8 @@ static void handleStatus() {
   doc["source"] = sourceName(fs.activeSource);
   doc["dataAge"] = fs.lastOkMs ? (millis() - fs.lastOkMs) / 1000 : -1;
   doc["error"] = fs.error;
-  doc["map"] = terrainStatus();
+  doc["map"] = mapStatus();
+  doc["seenToday"] = flightsSeenToday();
   time_t now = time(nullptr);
   doc["timeSet"] = now > 1700000000;
   sendJson(doc);
@@ -108,24 +110,30 @@ static void handleStatus() {
 static void handleAircraft() {
   std::vector<Aircraft> list;
   flightsCopy(list);
+  const uint8_t u = cfg.units;
   JsonDocument doc;
   JsonArray arr = doc.to<JsonArray>();
+  char b[32];
   for (const Aircraft &a : list) {
     if (!a.visible) continue;
     JsonObject o = arr.add<JsonObject>();
     o["hex"] = a.hex;
+    flightName(b, sizeof b, a);
+    o["name"] = b;
+    o["model"] = modelName(a);
     o["call"] = a.call;
     o["reg"] = a.reg;
     o["type"] = a.type;
     o["cls"] = AC_CLASS_KEYS[a.cls];
-    if (a.ground) o["alt"] = "ground";
-    else if (a.altValid) o["alt"] = a.alt;
-    if (a.gsValid) o["gs"] = (int)a.gs;
-    if (a.trackValid) o["trk"] = (int)a.track;
-    if (a.vsValid) o["vs"] = a.vs;
-    o["sq"] = a.squawk;
-    o["dist"] = serialized(String(a.distNm, 1));
-    o["brg"] = (int)a.bearing;
+    fmtAltitude(b, sizeof b, a, u);
+    o["alt"] = b;
+    fmtSpeed(b, sizeof b, a, u);
+    o["speed"] = b;
+    fmtDist(b, sizeof b, a.distNm, u);
+    o["dist"] = b;
+    o["dir"] = compass8(a.bearing);
+    if (a.trackValid) o["heading"] = compass8(a.track);
+    if (a.vsValid && abs(a.vs) >= 300 && !a.ground) o["vs"] = a.vs > 0 ? "climbing" : "descending";
     if (a.emergency) o["emerg"] = true;
     if (arr.size() >= 60) break;
   }

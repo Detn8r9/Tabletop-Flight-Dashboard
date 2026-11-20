@@ -4,6 +4,7 @@
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
 #include "audio.h"
+#include "names.h"
 #include <atomic>
 
 // ---------- PSRAM allocator so big JSON responses don't exhaust internal RAM
@@ -149,11 +150,11 @@ static void checkAlerts(const Settings &cfg, const std::vector<Aircraft> &list) 
   for (const Aircraft &a : list) {
     if (a.distNm > cfg.rangeNm) continue;
     const char *why = nullptr;
-    if (cfg.alertEmerg && a.emergency) why = "EMERGENCY";
-    else if (cfg.alertMil && a.cls == CLS_MILITARY) why = "MILITARY";
-    else if (cfg.alertHeli && a.cls == CLS_HELI) why = "HELICOPTER";
-    else if (cfg.alertTypes && matchTypeList(a.type, cfg.alertTypeList)) why = "WATCHED TYPE";
-    else if (cfg.alertNear && a.distNm <= cfg.alertNearNm && !a.ground) why = "OVERHEAD";
+    if (cfg.alertEmerg && a.emergency) why = "Emergency";
+    else if (cfg.alertMil && a.cls == CLS_MILITARY) why = "Military";
+    else if (cfg.alertHeli && a.cls == CLS_HELI) why = "Helicopter";
+    else if (cfg.alertTypes && matchTypeList(a.type, cfg.alertTypeList)) why = "Watched";
+    else if (cfg.alertNear && a.distNm <= cfg.alertNearNm && !a.ground) why = "Overhead";
     if (!why || recentlyAlerted(a.hex)) continue;
 
     strlcpy(alerted[alertedIdx].hex, a.hex, 7);
@@ -161,8 +162,11 @@ static void checkAlerts(const Settings &cfg, const std::vector<Aircraft> &list) 
     alertedIdx = (alertedIdx + 1) % 32;
 
     xSemaphoreTake(lock, portMAX_DELAY);
-    snprintf(pendingAlert.text, sizeof pendingAlert.text, "%s %s %s", why,
-             a.call[0] ? a.call : a.hex, a.type);
+    char name[24];
+    if (a.call[0]) friendlyFlight(a.call, name, sizeof name);
+    else snprintf(name, sizeof name, "%s", a.reg[0] ? a.reg : a.hex);
+    const char *model = aircraftModel(a.type);
+    snprintf(pendingAlert.text, sizeof pendingAlert.text, "%s: %s %s", why, name, model ? model : "");
     pendingAlert.ms = millis();
     alertWaiting = true;
     xSemaphoreGive(lock);
@@ -269,6 +273,8 @@ static bool fetchOnce(const Settings &cfg, uint8_t src, String &err, std::vector
   return true;
 }
 
+static void noteSeen(const std::vector<Aircraft> &list);
+
 static void fetchTask(void *) {
   std::vector<Aircraft> fresh;
   for (;;) {
@@ -309,6 +315,7 @@ static void fetchTask(void *) {
         std::vector<Aircraft> snap;
         flightsCopy(snap);
         checkAlerts(cfg, snap);
+        noteSeen(snap);
       }
       uint32_t spent = millis() - t0;
       waitMs = waitMs > spent ? waitMs - spent : 200;
@@ -344,6 +351,29 @@ void flightsRefilter() {
   version++;
   xSemaphoreGive(lock);
 }
+
+// ---------- "seen today" counter: distinct aircraft (by ICAO hex) that passed
+// the filters, reset at local midnight
+static uint32_t *seen = nullptr;
+static const int SEEN_CAP = 4096;   // open-addressing hash set
+static int seenCount = 0, seenDay = -1;
+
+static void noteSeen(const std::vector<Aircraft> &list) {
+  struct tm tm;
+  int day = getLocalTime(&tm, 0) ? tm.tm_yday : seenDay;
+  if (!seen) seen = (uint32_t *)heap_caps_calloc(SEEN_CAP, 4, MALLOC_CAP_SPIRAM);
+  if (!seen) return;
+  if (day != seenDay) { memset(seen, 0, SEEN_CAP * 4); seenCount = 0; seenDay = day; }
+  for (const Aircraft &a : list) {
+    if (!a.visible || seenCount > SEEN_CAP * 3 / 4) continue;
+    uint32_t k = strtoul(a.hex, nullptr, 16) + 1;   // never 0
+    uint32_t i = (k * 2654435761u) % SEEN_CAP;
+    while (seen[i] && seen[i] != k) i = (i + 1) % SEEN_CAP;
+    if (!seen[i]) { seen[i] = k; seenCount++; }
+  }
+}
+
+int flightsSeenToday() { return seenCount; }
 
 void flightsCopy(std::vector<Aircraft> &out) {
   xSemaphoreTake(lock, portMAX_DELAY);
