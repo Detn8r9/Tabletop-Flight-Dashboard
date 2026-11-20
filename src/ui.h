@@ -9,3 +9,4 @@ bool uiFrame();
 void uiShowInfo(uint32_t ms);            // IP / QR overlay for a while
 void uiSetHoldProgress(int secondsLeft); // factory-reset countdown (-1 = none)
 void uiMessage(const char *title, const char *line);   // full-screen notice
+int uiPlanesOnScreen();          // planes currently drawn on the radar

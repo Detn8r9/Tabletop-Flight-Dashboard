@@ -61,7 +61,7 @@ tr.em td{color:var(--bad);font-weight:700}
  <div class="card" id="prevcard">
   <canvas id="screen" width="400" height="300"></canvas>
   <div class="prevbar"><span>Live view of the radar screen</span><span id="prevfps"></span></div>
-  <details id="acdet" style="margin-top:8px"><summary style="cursor:pointer;color:var(--mut);font-size:13.5px">List of planes on the radar</summary>
+  <details id="acdet" style="margin-top:8px"><summary style="cursor:pointer;color:var(--mut);font-size:13.5px">List of planes nearby</summary>
    <table><thead><tr><th>Flight</th><th>Aircraft</th><th>Altitude</th><th>Distance</th><th></th></tr></thead><tbody id="actable"></tbody></table>
   </details>
  </div>
@@ -223,6 +223,7 @@ tr.em td{color:var(--bad);font-weight:700}
 <script>
 const $=id=>document.getElementById(id), $$=s=>[...document.querySelectorAll(s)];
 let C=null; // current config
+const PAGE_FW='__FW_VERSION__';   // stamped at build time
 const CLASSES=[["airliner","Airliners","Big passenger and cargo jets"],["regional","Regional & business jets","Smaller jets and propeller airliners"],["light","Small planes","Private and training planes"],["highperf","High performance","Very fast or agile aircraft"],["heli","Helicopters","Police, medical, news, tours"],["glider","Gliders & ultralights",""],["balloon","Balloons & blimps",""],["drone","Drones",""],["military","Military",""],["unknown","Unclassified","Planes that don't say what they are"]];
 const FIELDS=[["flight","Flight name"],["model","Plane model"],["alt","Altitude"],["speed","Speed"],["dir","Direction"],["dist","Distance away"],["vs","Climbing / descending"],["code","Flight code"],["reg","Registration"],["type","Type code"],["squawk","Squawk code"]];
 const RANGES=[2,5,10,15,25,50,100,200];
@@ -339,7 +340,7 @@ async function upload(){const f=$('fw').files[0];if(!f){$('fwmsg').textContent='
  const fd=new FormData();fd.append('firmware',f,f.name);$('fwmsg').textContent='Uploading… keep this page open.';
  const x=new XMLHttpRequest();x.open('POST','/update');x.setRequestHeader('X-FR','1');
  x.upload.onprogress=e=>{if(e.lengthComputable)$('fwmsg').textContent=`Uploading… ${Math.round(e.loaded/e.total*100)}%`};
- x.onload=()=>{$('fwmsg').textContent=x.status==200?'Installed. The radar is restarting.':'Update failed: '+x.responseText};x.onerror=()=>$('fwmsg').textContent='Upload failed.';x.send(fd)}
+ x.onload=()=>{if(x.status==200){$('fwmsg').textContent='Installed. The radar is restarting; this page will reload.';setTimeout(()=>location.reload(),20000)}else $('fwmsg').textContent='Update failed: '+x.responseText};x.onerror=()=>$('fwmsg').textContent='Upload failed.';x.send(fd)}
 async function reset(){if(!confirm('Erase the location, Wi-Fi and all settings?'))return;if(prompt('Type RESET to confirm')!=='RESET')return;
  try{await post('/api/reset',{confirm:'RESET'});document.body.innerHTML='<main><h1>Reset done</h1><p>The radar is restarting in setup mode. Join the “FlightRadar-Setup” Wi-Fi to set it up again.</p></main>'}catch(e){alert('Reset failed: '+e.message)}}
 
@@ -356,7 +357,10 @@ async function fillList(){if($('acdet').open&&!document.hidden){try{const a=awai
   tb.appendChild(tr)})}catch(e){}}}
 function list(){fillList();setTimeout(list,4000)}
 $('acdet').addEventListener('toggle',fillList);
-async function pill(){try{const s=await (await fetch('/api/status')).json();const p=$('pill');
+async function pill(){try{const s=await (await fetch('/api/status')).json();
+ if(s.fw&&s.fw!==PAGE_FW){location.reload();return}   // firmware was updated: load the matching pageconst p=$('pill');
+ // the radar was updated: reload so this page matches the new firmware
+ if(window._fw&&s.fw!==window._fw){location.reload();return}window._fw=s.fw;
  if(s.error&&s.dataAge!==0){p.className='pill err';p.innerHTML='<b>●</b> can’t get plane data';}else{p.className='pill';p.innerHTML=s.dataAge<0?'<b>●</b> looking for planes':`<b>●</b> live · ${s.shown} plane${s.shown==1?'':'s'}`}}catch(e){$('pill').className='pill err';$('pill').innerHTML='<b>●</b> offline'}setTimeout(pill,5000)}
 
 // ---------- boot
