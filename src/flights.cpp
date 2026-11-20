@@ -30,23 +30,25 @@ static int alertedIdx = 0;
 
 const char *sourceName(uint8_t src) {
   switch (src) {
+    default:
     case SRC_ADSBLOL: return "adsb.lol";
     case SRC_ADSBFI: return "adsb.fi";
-    default: return "airplanes.live";
+    case SRC_AIRPLANESLIVE: return "airplanes.live";
   }
 }
 
 static String buildUrl(uint8_t src, double lat, double lon, int radius) {
   char buf[160];
   switch (src) {
+    default:
     case SRC_ADSBLOL:
       snprintf(buf, sizeof buf, "https://api.adsb.lol/v2/lat/%.4f/lon/%.4f/dist/%d", lat, lon, radius);
       break;
     case SRC_ADSBFI:
       snprintf(buf, sizeof buf, "https://opendata.adsb.fi/api/v2/lat/%.4f/lon/%.4f/dist/%d", lat, lon, radius);
       break;
-    default:
-      snprintf(buf, sizeof buf, "http://api.airplanes.live/v2/point/%.4f/%.4f/%d", lat, lon, radius);
+    case SRC_AIRPLANESLIVE:
+      snprintf(buf, sizeof buf, "https://api.airplanes.live/v2/point/%.4f/%.4f/%d", lat, lon, radius);
   }
   return buf;
 }
@@ -216,6 +218,7 @@ static bool fetchOnce(const Settings &cfg, uint8_t src, String &err, std::vector
   int code = http.GET();
   if (code != 200) {
     err = code < 0 ? http.errorToString(code) : ("HTTP " + String(code));
+    if (code >= 400 && code < 500) err += " (refused)";
     http.end();
     return false;
   }
@@ -305,9 +308,9 @@ static void fetchTask(void *) {
       } else {
         status.failures++;
         status.error = String(sourceName(src)) + ": " + err;
-        // after 3 straight failures, try the next source; return to the
-        // preferred one on the next success cycle
-        if (status.failures % 3 == 0) status.activeSource = (src + 1) % SRC_COUNT;
+        // a refusal (4xx) moves to the next source straight away; other
+        // errors after 2 tries. The preferred source is retried later.
+        if (err.endsWith("(refused)") || status.failures % 2 == 0) status.activeSource = (src + 1) % SRC_COUNT;
         waitMs = min<uint32_t>(30000, waitMs * (1 + status.failures));
       }
       xSemaphoreGive(lock);
