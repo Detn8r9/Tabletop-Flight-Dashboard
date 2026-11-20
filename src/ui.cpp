@@ -517,7 +517,7 @@ static void drawPanel(const Settings &s, const std::vector<Aircraft> &list, cons
   String ms = mapStatus();
   snprintf(b, sizeof b, "Seen today: %d", flightsSeenToday());
   text(X, SCREEN_H - 26, b);
-  if (fs.failures > 0 && !fs.lastOkMs) text(X, SCREEN_H - 17, "No internet?");
+  if (fs.failures > 0 && !fs.lastOkMs) text(X, SCREEN_H - 17, "No plane data");
   else if (fs.failures > 2) text(X, SCREEN_H - 17, "Data delayed");
   else if (ms.startsWith("downloading")) text(X, SCREEN_H - 17, ("Map " + ms.substring(ms.lastIndexOf(' ') + 1)).c_str());
   else if (ms.startsWith("drawing")) text(X, SCREEN_H - 17, "Drawing map");
