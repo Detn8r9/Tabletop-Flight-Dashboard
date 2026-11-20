@@ -187,6 +187,32 @@ bool alertsPending(AlertEvent &out) {
 
 // ---------- fetching
 
+// A write-only Stream that collects a download in PSRAM.
+struct PsramBuffer : public Stream {
+  uint8_t *data = nullptr;
+  size_t len = 0, cap = 0;
+  bool overflow = false;
+  static const size_t MAX = 3 * 1024 * 1024;
+  void clear() { len = 0; overflow = false; }
+  size_t write(uint8_t b) override { return write(&b, 1); }
+  size_t write(const uint8_t *buf, size_t n) override {
+    if (len + n > cap) {
+      size_t nc = max(cap ? cap * 2 : (size_t)256 * 1024, len + n);
+      if (nc > MAX) { overflow = true; return 0; }
+      uint8_t *p = (uint8_t *)heap_caps_realloc(data, nc, MALLOC_CAP_SPIRAM);
+      if (!p) { overflow = true; return 0; }
+      data = p;
+      cap = nc;
+    }
+    memcpy(data + len, buf, n);
+    len += n;
+    return n;
+  }
+  int available() override { return 0; }
+  int read() override { return -1; }
+  int peek() override { return -1; }
+};
+
 static void copyStr(char *dst, size_t n, JsonVariantConst v) {
   const char *s = v.as<const char *>();
   if (!s) { dst[0] = 0; return; }
@@ -197,8 +223,9 @@ static void copyStr(char *dst, size_t n, JsonVariantConst v) {
 }
 
 static bool fetchOnce(const Settings &cfg, uint8_t src, String &err, std::vector<Aircraft> &out, int &total) {
-  // the map reaches past the range ring into the screen corners
-  int radius = (int)ceilf(min(250.0f, cfg.rangeNm * RANGE_TO_CORNER + 1));
+  // the map reaches past the range ring into the screen corners; cap the
+  // request so busy areas don't produce multi-megabyte replies
+  int radius = (int)ceilf(min(MAX_FETCH_NM, cfg.rangeNm * RANGE_TO_CORNER + 1));
   String url = buildUrl(src, cfg.lat, cfg.lon, radius);
 
   HTTPClient http;
@@ -212,8 +239,7 @@ static bool fetchOnce(const Settings &cfg, uint8_t src, String &err, std::vector
     ok = http.begin(plain, url);
   }
   if (!ok) { err = "bad URL"; return false; }
-  http.useHTTP10(true);          // no chunked encoding, so we can stream-parse
-  http.setTimeout(10000);
+  http.setTimeout(15000);
   http.setUserAgent("FlightRadar-ESP32/" FW_VERSION);
   int code = http.GET();
   if (code != 200) {
@@ -231,12 +257,20 @@ static bool fetchOnce(const Settings &cfg, uint8_t src, String &err, std::vector
                             "emergency", "dbFlags"})
       f[fld] = true;
   }
+  // Download the whole reply first (HTTPClient undoes chunked encoding),
+  // then parse from memory. Parsing straight off a TLS stream gave up at
+  // the first pause in the transfer.
+  static PsramBuffer body;
+  body.clear();
+  int wrote = http.writeToStream(&body);
+  http.end();
+  if (wrote < 0) { err = "download " + HTTPClient::errorToString(wrote); return false; }
+  if (body.overflow) { err = "reply too large"; return false; }
   JsonDocument doc(&psramAlloc);
-  DeserializationError de = deserializeJson(doc, http.getStream(),
+  DeserializationError de = deserializeJson(doc, (const char *)body.data, body.len,
                                             DeserializationOption::Filter(filter),
                                             DeserializationOption::NestingLimit(6));
-  http.end();
-  if (de) { err = String("JSON ") + de.c_str(); return false; }
+  if (de) { err = String("JSON ") + de.c_str() + " (" + String(body.len / 1024) + " KB)"; return false; }
 
   JsonArrayConst arr = doc["ac"].isNull() ? doc["aircraft"].as<JsonArrayConst>() : doc["ac"].as<JsonArrayConst>();
   out.clear();

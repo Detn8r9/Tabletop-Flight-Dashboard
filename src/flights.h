@@ -6,6 +6,7 @@
 
 // Farthest screen corner is ~2x the range-ring radius (side-panel layout).
 #define RANGE_TO_CORNER 2.0f
+#define MAX_FETCH_NM 100.0f   // largest radius requested from the data source
 
 struct Aircraft {
   char hex[7] = "";
