@@ -3,6 +3,9 @@
 #include <math.h>
 #include <string.h>
 #include <stdint.h>
+#include <vector>
+#include <Adafruit_GFX.h>
+#include <Fonts/FreeSansBold9pt7b.h>
 
 // ---------------- pure part (also built on the desktop for tests)
 
@@ -77,6 +80,141 @@ void mapRender(const uint8_t *cls, uint8_t style, uint8_t *bits) {
     }
 }
 
+
+// ---------------- place names and airports
+
+namespace {
+struct LRect { int x, y, w, h; };
+bool hit(const LRect &a, const LRect &b) {
+  return a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+}
+// GFXcanvas1 that draws straight into our map buffer (same 1-bit layout)
+struct MapCanvas : public GFXcanvas1 {
+  uint8_t *target;
+  MapCanvas(uint8_t *t) : GFXcanvas1(MAP_W, MAP_H), target(t) { memcpy(getBuffer(), t, MAP_BYTES); }
+  void done() { memcpy(target, getBuffer(), MAP_BYTES); }
+};
+int32_t rd32(const uint8_t *p) { return (int32_t)(p[0] | p[1] << 8 | p[2] << 16 | (uint32_t)p[3] << 24); }
+}
+
+// text with a white outline, so it reads over roads and water
+static void haloText(GFXcanvas1 &g, int x, int y, const char *s, const GFXfont *f, bool bold) {
+  g.setFont(f);
+  g.setTextWrap(false);
+  g.setTextColor(0);
+  for (int dy = -1; dy <= 1; dy++)
+    for (int dx = -1; dx <= (bold ? 2 : 1); dx++) {
+      if (!dx && !dy) continue;
+      g.setCursor(x + dx, y + dy);
+      g.print(s);
+    }
+  g.setTextColor(1);
+  g.setCursor(x, y);
+  g.print(s);
+  if (bold) { g.setCursor(x + 1, y); g.print(s); }
+}
+
+void mapDrawLabels(uint8_t *bits, double lat0, double lon0, float mpp, int cx, int cy,
+                   uint8_t layout, const uint8_t *places, size_t plen,
+                   const uint8_t *aps, size_t alen, bool towns) {
+  MapCanvas g(bits);
+  std::vector<LRect> used;
+  // keep clear of the house, the side panel / corner boxes and the map credit
+  used.push_back({cx - 12, cy - 12, 25, 25});
+  if (layout == 0) {
+    used.push_back({296, 0, MAP_W - 296, MAP_H});
+    used.push_back({0, MAP_H - 11, 106, 11});
+  } else {
+    used.push_back({0, 0, 112, 28});
+    used.push_back({MAP_W - 112, 0, 112, 28});
+    used.push_back({0, MAP_H - 17, 132, 17});
+    used.push_back({MAP_W - 82, MAP_H - 17, 82, 17});
+    used.push_back({MAP_W / 2 - 54, MAP_H - 11, 108, 11});
+  }
+  const double kx = 111320.0 * cos(lat0 * 0.017453292519943295) / mpp, ky = 111320.0 / mpp;
+  auto project = [&](int32_t la, int32_t lo, int &x, int &y) {
+    x = (int)lround(cx + (lo / 1e5 - lon0) * kx);
+    y = (int)lround(cy - (la / 1e5 - lat0) * ky);
+    return x >= 2 && y >= 2 && x < MAP_W - 2 && y < MAP_H - 2;
+  };
+  auto clear = [&](const LRect &r) {
+    if (r.x < 1 || r.y < 1 || r.x + r.w > MAP_W - 1 || r.y + r.h > MAP_H - 1) return false;
+    for (const LRect &u : used) if (hit(r, u)) return false;
+    return true;
+  };
+
+  // airports first: they matter most on a flight radar
+  const float rangeNm = mpp * SCOPE_R / 1852.0f;
+  int nAirports = 0;
+  for (size_t off = 0; off + 12 <= alen && nAirports < 8; off += 12) {
+    const uint8_t *r = aps + off;
+    int kind = r[8];
+    if (kind < 2 && rangeNm > 60) continue;    // only big airports when zoomed far out
+    int x, y;
+    if (!project(rd32(r), rd32(r + 4), x, y)) continue;
+    char code[4] = {(char)r[9], (char)r[10], (char)r[11], 0};
+    LRect sym = {x - 7, y - 7, 15, 15};
+    if (!clear(sym)) continue;
+    const int tw = 3 * 7 + 2, th = 10;
+    const LRect cand[4] = {{x + 9, y - 5, tw, th}, {x - 9 - tw, y - 5, tw, th}, {x - tw / 2, y - 18, tw, th}, {x - tw / 2, y + 9, tw, th}};
+    for (const LRect &c : cand) {
+      if (!clear(c)) continue;
+      // symbol: ringed circle with a runway through it
+      g.fillCircle(x, y, 6, 0);
+      g.drawCircle(x, y, 6, 1);
+      g.drawCircle(x, y, 5, 1);
+      g.drawLine(x - 4, y + 4, x + 4, y - 4, 1);
+      g.drawLine(x - 3, y + 4, x + 4, y - 3, 1);
+      g.drawLine(x - 4, y + 3, x + 3, y - 4, 1);
+      haloText(g, c.x + 1, c.y + 1, code, nullptr, true);
+      used.push_back(sym);
+      used.push_back({c.x - 1, c.y - 1, c.w + 2, c.h + 2});
+      nAirports++;
+      break;
+    }
+  }
+
+  // towns and cities, biggest first
+  if (towns) {
+    int nPlaces = 0;
+    for (size_t off = 0; off + 10 <= plen && nPlaces < 14;) {
+      const uint8_t *r = places + off;
+      int len = r[9];
+      off += 10 + len;
+      int x, y;
+      if (!project(rd32(r), rd32(r + 4), x, y)) continue;
+      char name[44];
+      memcpy(name, r + 10, len);
+      name[len] = 0;
+      const bool big = r[8] >= 160;   // about 1 million people or more
+      const GFXfont *f = big ? &FreeSansBold9pt7b : nullptr;
+      int16_t bx, by;
+      uint16_t w, h;
+      g.setFont(f);
+      g.getTextBounds(name, 0, 0, &bx, &by, &w, &h);
+      if (!big) { w = len * 6; h = 8; by = 0; }
+      LRect dot = {x - 2, y - 2, 5, 5};
+      if (!clear(dot)) continue;
+      const LRect cand[4] = {{x + 5, y - (int)h / 2 - 1, (int)w + 3, (int)h + 3},
+                             {x - 5 - (int)w - 3, y - (int)h / 2 - 1, (int)w + 3, (int)h + 3},
+                             {x - (int)w / 2 - 1, y - (int)h - 6, (int)w + 3, (int)h + 3},
+                             {x - (int)w / 2 - 1, y + 4, (int)w + 3, (int)h + 3}};
+      for (const LRect &c : cand) {
+        if (!clear(c)) continue;
+        g.fillRect(x - 2, y - 2, 5, 5, 0);
+        g.fillRect(x - 1, y - 1, 3, 3, 1);
+        if (big) g.drawRect(x - 3, y - 3, 7, 7, 1);
+        haloText(g, c.x + 1 - (big ? bx : 0), c.y + 1 - (big ? by : 0), name, f, false);
+        used.push_back(dot);
+        used.push_back({c.x - 2, c.y - 2, c.w + 4, c.h + 4});
+        nPlaces++;
+        break;
+      }
+    }
+  }
+  g.done();
+}
+
 // ---------------- device part
 #ifndef HOST_TEST
 #include <WiFi.h>
@@ -85,6 +223,12 @@ void mapRender(const uint8_t *cls, uint8_t style, uint8_t *bits) {
 #include <LittleFS.h>
 #include <PNGdec.h>
 #include <atomic>
+
+// data/places.bin and data/airports.bin, embedded by platformio.ini
+extern const uint8_t places_start[] asm("_binary_data_places_bin_start");
+extern const uint8_t places_end[] asm("_binary_data_places_bin_end");
+extern const uint8_t airports_start[] asm("_binary_data_airports_bin_start");
+extern const uint8_t airports_end[] asm("_binary_data_airports_bin_end");
 
 static SemaphoreHandle_t lock;
 static uint8_t *mapBits = nullptr;
@@ -98,7 +242,7 @@ struct MapHeader {
   float lat, lon, range;
   uint8_t style, layout, pad[2];
 };
-static const uint32_t MAGIC = 0x4F534D31;  // "OSM1"
+static const uint32_t MAGIC = 0x4F534D32;  // "OSM2" (adds place names)
 
 static void setStatus(const String &s) {
   xSemaphoreTake(lock, portMAX_DELAY);
@@ -134,7 +278,7 @@ static void publish(const uint8_t *bits) {
 // One cached image per zoom level / style / layout, so stepping through
 // zoom levels with the buttons only downloads each once.
 static String cachePath(const Settings &s) {
-  return "/m_" + String((int)lroundf(s.rangeNm * 10)) + "_" + String(s.mapStyle) + "_" + String(s.layout) + ".bin";
+  return "/m_" + String((int)lroundf(s.rangeNm * 10)) + "_" + String(s.mapStyle) + "_" + String(s.layout) + (s.placeNames ? "" : "n") + ".bin";
 }
 
 static bool loadCache(const Settings &s) {
@@ -143,7 +287,8 @@ static bool loadCache(const Settings &s) {
   MapHeader h;
   bool ok = f.read((uint8_t *)&h, sizeof h) == sizeof h && h.magic == MAGIC &&
             fabsf(h.lat - (float)s.lat) < 1e-4f && fabsf(h.lon - (float)s.lon) < 1e-4f &&
-            fabsf(h.range - s.rangeNm) < 1e-3f && h.style == s.mapStyle && h.layout == s.layout;
+            fabsf(h.range - s.rangeNm) < 1e-3f && h.style == s.mapStyle && h.layout == s.layout &&
+            h.pad[0] == (uint8_t)s.placeNames;
   if (ok) {
     uint8_t *tmp = (uint8_t *)heap_caps_malloc(MAP_BYTES, MALLOC_CAP_SPIRAM);
     ok = f.read(tmp, MAP_BYTES) == MAP_BYTES;
@@ -157,7 +302,7 @@ static bool loadCache(const Settings &s) {
 static void saveCache(const Settings &s, const uint8_t *bits) {
   File f = LittleFS.open(cachePath(s), "w");
   if (!f) return;
-  MapHeader h = {MAGIC, (float)s.lat, (float)s.lon, s.rangeNm, s.mapStyle, s.layout, {0, 0}};
+  MapHeader h = {MAGIC, (float)s.lat, (float)s.lon, s.rangeNm, s.mapStyle, s.layout, {(uint8_t)s.placeNames, 0}};
   f.write((uint8_t *)&h, sizeof h);
   f.write(bits, MAP_BYTES);
   f.close();
@@ -325,6 +470,9 @@ static bool build(const Settings s) {
 
   mapRender(cls, s.mapStyle, bits);
   heap_caps_free(cls);
+  setStatus("adding place names");
+  mapDrawLabels(bits, s.lat, s.lon, mpp, CX, CY, s.layout, places_start, places_end - places_start,
+                airports_start, airports_end - airports_start, s.placeNames);
   publish(bits);
   saveCache(s, bits);
   heap_caps_free(bits);

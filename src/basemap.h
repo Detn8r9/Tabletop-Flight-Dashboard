@@ -25,6 +25,12 @@ uint32_t mapVersion();            // bumps when a new image is available
 bool mapCopy(uint8_t *dst);       // MAP_BYTES, 1 = ink
 String mapStatus();               // "ready", "downloading 3/9", "error: ..."
 
+// Draws town/city names and airports onto the map image (1 = ink).
+// places/airports are the embedded data/places.bin and data/airports.bin.
+void mapDrawLabels(uint8_t *bits, double lat0, double lon0, float metersPerPx, int cx, int cy,
+                   uint8_t layout, const uint8_t *places, size_t placesLen,
+                   const uint8_t *airports, size_t airportsLen, bool towns);
+
 // Turns a MAP_W x MAP_H grid of classes into the 1-bit image.
 // style: 0 = simple streets, 1 = detailed streets, 2 = none.
 void mapRender(const uint8_t *cls, uint8_t style, uint8_t *bits);

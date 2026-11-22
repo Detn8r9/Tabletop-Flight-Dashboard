@@ -39,6 +39,7 @@ void configToJson(const Settings &s, JsonObject o) {
   v["layout"] = s.layout;
   v["map"] = s.mapStyle;
   v["rings"] = s.rings;
+  v["places"] = s.placeNames;
   v["labels"] = s.labels;
   v["leaders"] = s.leaders;
   v["units"] = s.units;
@@ -151,6 +152,7 @@ uint32_t configFromJson(Settings &s, JsonObjectConst o) {
     if (setU8(v["layout"], s.layout, 0, 1)) chg |= CHG_MAP;
     if (setU8(v["map"], s.mapStyle, 0, 2)) chg |= CHG_MAP;
     setIf(v["rings"], s.rings);
+    if (setIf(v["places"], s.placeNames)) chg |= CHG_MAP;
     setIf(v["labels"], s.labels);
     setIf(v["leaders"], s.leaders);
     setU8(v["units"], s.units, 0, 2);

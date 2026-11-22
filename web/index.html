@@ -111,6 +111,7 @@ tr.em td{color:var(--bad);font-weight:700}
  <div class="card"><h3>Look</h3>
   <div class="row"><div class="t">Background map</div><select data-k="view.map" data-num><option value="0">Street map (main roads)</option><option value="1">Street map (more roads)</option><option value="2">No map</option></select></div>
   <div class="row"><div class="t">Layout</div><select data-k="view.layout" data-num><option value="0">Radar + information panel</option><option value="1">Radar only (full screen)</option></select></div>
+  <div class="row"><div class="t">Town names<small>Airports are always marked</small></div><label class="sw"><input type="checkbox" data-k="view.places"><i></i></label></div>
   <div class="row"><div class="t">Distance rings</div><label class="sw"><input type="checkbox" data-k="view.rings"><i></i></label></div>
   <div class="row"><div class="t">Direction lines<small>A short line in front of each plane showing where it's heading</small></div><label class="sw"><input type="checkbox" data-k="view.leaders"><i></i></label></div>
   <div class="row"><div class="t">Sweep speed<small id="sweepv"></small></div></div>
@@ -177,7 +178,7 @@ tr.em td{color:var(--bad);font-weight:700}
 <!-- HELP -->
 <section class="tab" id="t-help">
  <div class="card"><h3>Reading the radar</h3>
-  <p><b>The little house</b> in the middle is home. The <b>solid ring</b> is the distance you picked under Display; dotted rings are in between.</p>
+  <p><b>The little house</b> in the middle is home. Towns are marked with a dot and their name; airports with a ringed circle and their three-letter code (like JFK). The <b>solid ring</b> is the distance you picked under Display; dotted rings are in between.</p>
   <p><b>Plane and helicopter icons</b> point the way they're flying. The short line in front shows where they'll be in about a minute.</p>
   <p>The <b>sweep line</b> spins like a real radar. Each plane flashes and updates as the line passes over it.</p>
   <p>Next to each plane: the <b>flight</b> (e.g. "Delta 1234"), the <b>plane model</b>, and how <b>high</b> it is. Small private planes show their registration (like N172SP) instead of a flight name.</p>

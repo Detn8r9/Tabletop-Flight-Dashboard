@@ -5,7 +5,7 @@
 #include <Arduino.h>
 #include <ArduinoJson.h>
 
-#define FW_VERSION "1.1.3"
+#define FW_VERSION "1.2.0"
 #define HOSTNAME_DEFAULT "flightradar"
 #define AP_SSID_PREFIX "FlightRadar-Setup"
 
@@ -65,6 +65,7 @@ struct Settings {
   uint8_t mapStyle = MAP_STREETS;
   uint8_t units = UNITS_US;        // ft + mph + miles
   bool   rings = true;
+  bool   placeNames = true;      // town names on the map
   bool   labels = true;
   bool   leaders = true;          // projected-track line in front of each plane
   bool   labelFields[LF_COUNT] = {true, true, true, false, false, false, false, false, false, false, false};
