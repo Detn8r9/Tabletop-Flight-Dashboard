@@ -45,8 +45,11 @@ After the first USB flash, either:
 
 ## Data sources
 
-- Aircraft: [airplanes.live](https://airplanes.live) (free, non-commercial, 1 request/s), falling back to adsb.lol and adsb.fi.
-- Terrain: AWS Open Data "Terrarium" elevation tiles. They're downloaded once per location and zoom level, then cached on the device.
+- Map: © OpenStreetMap contributors (tile.openstreetmap.org), converted to black and white on the device.
+- Town names: GeoNames (CC-BY 4.0), built into the firmware (`data/places.bin`, made by `tools/make_places.py`).
+- Airports: OurAirports (public domain), built in (`data/airports.bin`).
+
+- Aircraft: adsb.lol, falling back to adsb.fi (both free community networks).
 - Approximate location: ip-api.com (used once, and only when no location has been set).
 
 ## Files
