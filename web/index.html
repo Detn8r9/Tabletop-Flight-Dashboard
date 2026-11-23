@@ -1,0 +1,416 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>FlightRadar</title>
+<style>
+:root{--bg:#0a110d;--card:#111c16;--card2:#16241c;--line:#23362a;--fg:#e3eee6;--mut:#8aa293;--acc:#5ef08a;--warn:#ffb454;--bad:#ff7a6b;--r:14px}
+*{box-sizing:border-box}html{-webkit-text-size-adjust:100%}
+body{margin:0;font:15px/1.45 -apple-system,system-ui,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--fg)}
+main{max-width:860px;margin:0 auto;padding:12px 14px 80px}
+header{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:6px 2px 12px}
+h1{font-size:20px;margin:0;letter-spacing:.3px}h1 span{color:var(--acc)}
+.pill{font-size:12.5px;padding:5px 10px;border-radius:99px;background:var(--card);border:1px solid var(--line);color:var(--mut);white-space:nowrap}
+.pill b{color:var(--acc)}.pill.err b{color:var(--bad)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:14px;margin-bottom:12px}
+.card h3{margin:0 0 10px;font-size:14px;text-transform:uppercase;letter-spacing:.8px;color:var(--mut)}
+.hint{color:var(--mut);font-size:13px;margin:4px 0 0}
+#screen{width:100%;aspect-ratio:4/3;image-rendering:pixelated;border-radius:10px;background:#c8cfc4;display:block}
+.prevbar{display:flex;justify-content:space-between;align-items:center;margin-top:8px;font-size:13px;color:var(--mut)}
+nav{display:flex;gap:6px;overflow-x:auto;padding:2px 0 10px;position:sticky;top:0;background:var(--bg);z-index:5;scrollbar-width:none}
+nav button{flex:0 0 auto;padding:9px 14px;border-radius:99px;border:1px solid var(--line);background:var(--card);color:var(--mut);font-weight:600;font-size:14px}
+nav button.on{background:var(--acc);color:#05200f;border-color:var(--acc)}
+.tab{display:none}.tab.on{display:block}
+.row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 0;border-top:1px solid var(--line)}
+.row:first-of-type{border-top:0}.row .t{flex:1}.row .t small{display:block;color:var(--mut);font-size:12.5px}
+.sw{position:relative;width:46px;height:28px;flex:0 0 auto}.sw input{opacity:0;width:0;height:0}
+.sw i{position:absolute;inset:0;border-radius:99px;background:#2a3d31;transition:.15s}
+.sw i:after{content:"";position:absolute;left:3px;top:3px;width:22px;height:22px;border-radius:50%;background:#cfd9d2;transition:.15s}
+.sw input:checked+i{background:var(--acc)}.sw input:checked+i:after{transform:translateX(18px);background:#05200f}
+input[type=text],input[type=number],select{background:#0c1611;color:var(--fg);border:1px solid var(--line);border-radius:10px;padding:9px 10px;font-size:15px;min-width:0}
+input[type=number]{width:110px}input[type=range]{width:100%;accent-color:var(--acc)}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}.grid2 label{display:block;font-size:12.5px;color:var(--mut);margin-bottom:4px}
+.grid2 input{width:100%}
+.btn{padding:10px 14px;border-radius:10px;border:1px solid var(--line);background:var(--card2);color:var(--fg);font-weight:600;font-size:14px;cursor:pointer}
+.btn.pri{background:var(--acc);border-color:var(--acc);color:#05200f}.btn.bad{color:var(--bad);border-color:#5a2a24}
+.btns{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{padding:6px 11px;border-radius:99px;border:1px solid var(--line);background:#0c1611;color:var(--mut);font-size:13.5px;cursor:pointer;user-select:none;font-variant-numeric:tabular-nums}
+.chip.on{background:#1f4a2e;border-color:#2f7a48;color:var(--fg)}
+.seg{display:flex;border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.seg button{flex:1;padding:9px 6px;background:#0c1611;color:var(--mut);border:0;border-left:1px solid var(--line);font-weight:600;font-size:13.5px}
+.seg button:first-child{border-left:0}.seg button.on{background:#1f4a2e;color:var(--fg)}
+details.grp{border:1px solid var(--line);border-radius:12px;margin-top:8px;background:#0e1813}
+details.grp summary{list-style:none;padding:11px 12px;cursor:pointer;display:flex;justify-content:space-between;font-weight:600}
+details.grp summary::-webkit-details-marker{display:none}details.grp summary small{color:var(--mut);font-weight:500}
+details.grp .in{padding:0 12px 12px}
+.sub{display:flex;gap:6px;margin-bottom:10px}
+#map{height:320px;border-radius:12px;margin-top:10px;display:none}
+.res{padding:9px 10px;border-radius:8px;cursor:pointer;font-size:14px}.res:hover{background:var(--card2)}
+table{width:100%;border-collapse:collapse;font-size:13.5px;font-variant-numeric:tabular-nums}
+th,td{text-align:left;padding:6px 4px;border-top:1px solid var(--line)}th{color:var(--mut);font-weight:600}
+tr.em td{color:var(--bad);font-weight:700}
+#toast{position:fixed;left:50%;bottom:18px;transform:translateX(-50%) translateY(80px);background:var(--acc);color:#05200f;font-weight:700;padding:9px 16px;border-radius:99px;transition:.25s;z-index:20}
+#toast.on{transform:translateX(-50%)}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:4px 14px;font-size:14px}.kv span:nth-child(odd){color:var(--mut)}
+.warn{color:var(--warn)}
+@media(min-width:760px){.cols{display:grid;grid-template-columns:1.05fr 1fr;gap:12px;align-items:start}.cols>div{min-width:0}#prevcard{position:sticky;top:10px}}
+</style></head><body><main>
+<header><h1>✈ Flight<span>Radar</span></h1><div id="pill" class="pill">connecting…</div></header>
+<div class="cols">
+<div>
+ <div class="card" id="prevcard">
+  <canvas id="screen" width="400" height="300"></canvas>
+  <div class="prevbar"><span>Live view of the radar screen</span><span id="prevfps"></span></div>
+  <details id="acdet" style="margin-top:8px"><summary style="cursor:pointer;color:var(--mut);font-size:13.5px">List of planes nearby</summary>
+   <table><thead><tr><th>Flight</th><th>Aircraft</th><th>Altitude</th><th>Distance</th><th></th></tr></thead><tbody id="actable"></tbody></table>
+  </details>
+  <div class="btns"><button class="btn" onclick="show('spotlight')">✈ What's the closest plane?</button><button class="btn" onclick="show('highlights')">★ Today's highlights</button></div>
+ </div>
+ <div class="card" id="todaycard"><h3>Today so far</h3><div id="today" class="hint">Loading…</div></div>
+</div>
+<div>
+<nav id="nav">
+ <button data-tab="loc" class="on">Location</button><button data-tab="disp">Display</button><button data-tab="air">Aircraft</button>
+ <button data-tab="alert">Alerts</button><button data-tab="night">Night</button><button data-tab="help">Help</button><button data-tab="sys">System</button>
+</nav>
+
+<!-- LOCATION -->
+<section class="tab on" id="t-loc">
+ <div class="card"><h3>Your location</h3>
+  <p id="approx" class="hint warn" style="display:none;margin:0 0 8px">This location is approximate (from your internet connection). Pick your exact spot for best results.</p>
+  <div class="grid2">
+   <div><label>Latitude</label><input type="number" step="any" id="lat"></div>
+   <div><label>Longitude</label><input type="number" step="any" id="lon"></div>
+  </div>
+  <div style="margin-top:10px"><label class="hint" style="display:block;margin-bottom:4px">Name (optional)</label><input type="text" id="locname" placeholder="Home" style="width:100%" maxlength="40"></div>
+  <div class="btns"><button class="btn pri" onclick="saveLatLon()">Save location</button><button class="btn" onclick="myLocation()">📍 Use my location</button><button class="btn" onclick="toggleMap()">🗺 Pick on map</button></div>
+  <p id="locmsg" class="hint"></p>
+ </div>
+ <div class="card"><h3>Search for a place</h3>
+  <div style="display:flex;gap:8px"><input type="text" id="q" placeholder="Address, town or airport" style="flex:1" onkeydown="if(event.key==='Enter')search()"><button class="btn" onclick="search()">Search</button></div>
+  <div id="results"></div>
+  <div id="map"></div>
+  <div id="mapbtns" class="btns" style="display:none"><button class="btn pri" onclick="useMapSpot()">Use this spot</button><span class="hint" style="align-self:center">Tap the map or drag the pin.</span></div>
+ </div>
+</section>
+
+<!-- DISPLAY -->
+<section class="tab" id="t-disp">
+ <div class="card"><h3>What the screen shows</h3>
+  <div class="seg" id="modeseg"><button data-m="0">Radar</button><button data-m="1">Airport board</button></div>
+  <p class="hint">The airport board lists planes landing and taking off. Pressing both buttons on the radar together also switches.</p>
+  <div class="row"><div class="t">Airport<small id="aphint">Leave empty for the nearest big airport, or type a code like JFK</small></div><input type="text" data-k="view.airport" maxlength="3" style="width:80px" autocapitalize="characters" placeholder="auto"></div>
+ </div>
+ <div class="card"><h3>Overhead alert</h3>
+  <div class="row"><div class="t">Show a big card when a plane flies over<small>With where it's going and where to look</small></div><label class="sw"><input type="checkbox" data-k="overhead.on"><i></i></label></div>
+  <div data-show="overhead.on">
+   <div class="row"><div class="t">When it's within<small class="uname-long"></small></div><input type="number" min="0.3" max="10" step="0.1" data-dist="overhead.nm" style="width:80px"></div>
+   <div class="row"><div class="t">Play a soft ping</div><label class="sw"><input type="checkbox" data-k="overhead.chime"><i></i></label></div>
+  </div>
+  <div class="row"><div class="t">Look up where flights are going<small>Usual routes from adsbdb.com</small></div><label class="sw"><input type="checkbox" data-k="overhead.routes"><i></i></label></div>
+  <div class="row"><div class="t">Show today's highlights now and then<small>About every half hour, for a few seconds</small></div><label class="sw"><input type="checkbox" data-k="overhead.highlights"><i></i></label></div>
+ </div>
+ <div class="card"><h3>Movement</h3>
+  <div class="row"><div class="t">Smooth movement<small>Planes glide between updates. Off = classic radar: they jump when the sweep passes.</small></div><label class="sw"><input type="checkbox" data-k="view.smooth"><i></i></label></div>
+  <div class="row"><div class="t">Trails<small>Dots showing where each plane has been</small></div><label class="sw"><input type="checkbox" data-k="view.trails"><i></i></label></div>
+ </div>
+ <div class="card"><h3>How far to look</h3>
+  <p class="hint" style="margin:0 0 8px">Distance from your home to the solid ring on the radar. Planes beyond the ring still show out to the screen edges.</p>
+  <div class="chips" id="ranges"></div>
+  <div class="row"><div class="t">Other distance<small class="uname-long"></small></div><input type="number" min="2" max="280" step="1" data-dist="view.range"></div>
+ </div>
+ <div class="card"><h3>Units</h3>
+  <div class="row"><div class="t">Show distances and speeds in</div><select data-k="view.units" data-num id="unitsel"><option value="0">Feet, miles, mph</option><option value="1">Feet, nautical miles, knots (pilot)</option><option value="2">Meters, km, km/h</option></select></div>
+ </div>
+ <div class="card"><h3>Labels next to each plane</h3>
+  <div class="row"><div class="t">Show labels<small>You can also hold the BOOT button on the radar to switch them on or off</small></div><label class="sw"><input type="checkbox" data-k="view.labels"><i></i></label></div>
+  <p class="hint" style="margin:2px 0 8px">Tap to choose what to show:</p>
+  <div class="chips" id="fields"></div>
+  <p class="hint">Fewer items keep the screen tidy when it's busy.</p>
+ </div>
+ <div class="card"><h3>Look</h3>
+  <div class="row"><div class="t">Background map</div><select data-k="view.map" data-num><option value="0">Street map (main roads)</option><option value="1">Street map (more roads)</option><option value="2">No map</option></select></div>
+  <div class="row"><div class="t">Layout</div><select data-k="view.layout" data-num><option value="0">Radar + information panel</option><option value="1">Radar only (full screen)</option></select></div>
+  <div class="row"><div class="t">Town names<small>Airports are always marked</small></div><label class="sw"><input type="checkbox" data-k="view.places"><i></i></label></div>
+  <div class="row"><div class="t">Room temperature<small>In the side panel, from the sensor on the board</small></div><label class="sw"><input type="checkbox" data-k="hardware.climate"><i></i></label></div>
+  <div class="row"><div class="t">Distance rings</div><label class="sw"><input type="checkbox" data-k="view.rings"><i></i></label></div>
+  <div class="row"><div class="t">Direction lines<small>A short line in front of each plane showing where it's heading</small></div><label class="sw"><input type="checkbox" data-k="view.leaders"><i></i></label></div>
+  <div class="row"><div class="t">Sweep speed<small id="sweepv"></small></div></div>
+  <input type="range" min="2" max="10" step="0.5" data-k="view.sweep" oninput="sweepLbl()">
+ </div>
+</section>
+
+<!-- AIRCRAFT FILTERS -->
+<section class="tab" id="t-air">
+ <div class="card"><h3>Aircraft type</h3>
+  <div class="seg sub" id="typesub"><button class="on" data-s="cat">Categories</button><button data-s="mod">Specific models</button></div>
+  <div id="s-cat">
+   <div class="btns" style="margin:0 0 6px"><button class="btn" onclick="setAllClasses(true)">All</button><button class="btn" onclick="setAllClasses(false)">None</button></div>
+   <div id="classes"></div>
+  </div>
+  <div id="s-mod" style="display:none">
+   <div class="seg" id="modelmode"><button data-m="0">Off</button><button data-m="1">Show only these</button><button data-m="2">Hide these</button></div>
+   <p class="hint" id="modelsum"></p>
+   <div class="btns" style="margin-top:6px"><button class="btn" onclick="allModels(true)">All</button><button class="btn" onclick="allModels(false)">Clear</button></div>
+   <div id="groups"></div>
+   <div style="margin-top:12px"><label class="hint" style="display:block;margin-bottom:4px">Other type codes (comma separated, * wildcard, e.g. B73*, A32*)</label>
+    <input type="text" id="custommodels" style="width:100%" onchange="modelsChanged()" autocapitalize="characters"></div>
+  </div>
+ </div>
+ <div class="card"><h3>More filters</h3>
+  <div class="row"><div class="t">Hide planes parked on the ground</div><label class="sw"><input type="checkbox" data-k="filter.hideGround"><i></i></label></div>
+  <div class="row"><div class="t">Only certain heights<small>Only show planes between these altitudes, in feet</small></div><label class="sw"><input type="checkbox" data-k="filter.altOn"><i></i></label></div>
+  <div class="grid2" data-show="filter.altOn"><div><label>Minimum</label><input type="number" step="500" data-k="filter.altMin"></div><div><label>Maximum</label><input type="number" step="500" data-k="filter.altMax"></div></div>
+  <div class="row"><div class="t">Only certain airlines<small>Flight codes starting with these letters, e.g. DAL = Delta, UAL = United, AAL = American, SWA = Southwest</small></div><label class="sw"><input type="checkbox" data-k="filter.callOn"><i></i></label></div>
+  <div data-show="filter.callOn"><input type="text" data-k="filter.calls" placeholder="e.g. DAL, UAL, SWA, N" style="width:100%" autocapitalize="characters"></div>
+  <div class="row"><div class="t">Always show emergencies<small>Planes reporting an emergency ignore these filters</small></div><label class="sw"><input type="checkbox" data-k="filter.emergAlways"><i></i></label></div>
+ </div>
+</section>
+
+<!-- ALERTS -->
+<section class="tab" id="t-alert">
+ <div class="card"><h3>Alerts</h3>
+  <div class="row"><div class="t">Enable alerts<small>A banner on the screen (and a chime) when something interesting is in range</small></div><label class="sw"><input type="checkbox" data-k="alerts.on"><i></i></label></div>
+  <div data-show="alerts.on">
+   <div class="row"><div class="t">Play a sound</div><label class="sw"><input type="checkbox" data-k="alerts.sound"><i></i></label></div>
+   <div class="row"><div class="t">Volume</div><button class="btn" onclick="post('/api/test-alert')">Test sound</button></div>
+   <input type="range" min="10" max="100" step="5" data-k="alerts.volume">
+   <p class="hint" style="margin:14px 0 2px">Alert me for:</p>
+   <div class="row"><div class="t">Emergencies</div><label class="sw"><input type="checkbox" data-k="alerts.emerg"><i></i></label></div>
+   <div class="row"><div class="t">Military aircraft</div><label class="sw"><input type="checkbox" data-k="alerts.mil"><i></i></label></div>
+   <div class="row"><div class="t">Helicopters</div><label class="sw"><input type="checkbox" data-k="alerts.heli"><i></i></label></div>
+   <div class="row"><div class="t">Watched aircraft types</div><label class="sw"><input type="checkbox" data-k="alerts.typesOn"><i></i></label></div>
+   <div data-show="alerts.typesOn"><input type="text" data-k="alerts.types" placeholder="e.g. A388, B748, C17, B52" style="width:100%" autocapitalize="characters"></div>
+   <div class="row"><div class="t">Anything passing close by<small class="uname-within"></small></div><input type="number" min="0.5" max="60" step="0.5" data-dist="alerts.nearNm" style="width:80px"><label class="sw"><input type="checkbox" data-k="alerts.nearOn"><i></i></label></div>
+   <p class="hint">Each plane alerts at most once an hour. Alerts include planes hidden by your filters.</p>
+  </div>
+ </div>
+</section>
+
+<!-- NIGHT -->
+<section class="tab" id="t-night">
+ <div class="card"><h3>Night mode</h3>
+  <p class="hint" style="margin:0 0 8px">This reflective screen has no backlight, so it can't dim. Instead, night mode can calm the display or switch it off.</p>
+  <div class="row"><div class="t">At night</div><select data-k="night.mode" data-num><option value="0">Keep running normally</option><option value="1">Calm: no sweep, slow updates</option><option value="2">Turn the screen off</option></select></div>
+  <div class="grid2" data-show="night.mode"><div><label>Starts at</label><select data-k="night.start" data-num id="nstart"></select></div><div><label>Ends at</label><select data-k="night.end" data-num id="nend"></select></div></div>
+ </div>
+</section>
+
+<!-- HELP -->
+<section class="tab" id="t-help">
+ <div class="card"><h3>Reading the radar</h3>
+  <p><b>The little house</b> in the middle is home. Towns are marked with a dot and their name; airports with a ringed circle and their three-letter code (like JFK). The <b>solid ring</b> is the distance you picked under Display; dotted rings are in between.</p>
+  <p>When a plane flies close over the house, a <b>big card</b> shows its name, where it's going, how high it is, and which way to look up. Every half hour or so the screen shows <b>today's highlights</b>.</p>
+  <p><b>Plane and helicopter icons</b> point the way they're flying. The dots behind them are their trail. The short line in front shows where they'll be in about a minute.</p>
+  <p>The <b>sweep line</b> spins like a real radar. Each plane flashes and updates as the line passes over it.</p>
+  <p>Next to each plane: the <b>flight</b> (e.g. "Delta 1234"), the <b>plane model</b>, and how <b>high</b> it is. Small private planes show their registration (like N172SP) instead of a flight name.</p>
+  <p>The panel on the right shows the time, how many planes are nearby, and the <b>closest</b> one.</p>
+ </div>
+ <div class="card"><h3>Buttons on the radar</h3>
+  <p><b>KEY</b> – zoom in (look closer). <b>BOOT</b> – zoom out (look farther).</p>
+  <p><b>Both buttons together</b> – switch between the radar and the airport board.</p>
+  <p>When a big card is showing (a plane overhead, or today's highlights), any button closes it.</p>
+  <p>Hold <b>BOOT</b> – hide or show the plane labels.</p>
+  <p>Hold <b>KEY</b> for 2 seconds – show this page's address. Keep holding for 10 seconds to erase everything and start over.</p>
+  <p><b>PWR</b> – turn on (one click) or off (hold).</p>
+ </div>
+ <div class="card"><h3>Good to know</h3>
+  <p>The screen has no light of its own, like a paper page. Put it where daylight or a lamp reaches it.</p>
+  <p>Some planes don't share their position, so a few (often military) won't appear.</p>
+  <p>Typical heights: airliners cruise at 30,000–40,000 ft, climb and descend near airports, and small planes and helicopters stay below about 10,000 ft.</p>
+  <p>If the screen says it can't reach your Wi-Fi, join the <b>FlightRadar-Setup</b> network on your phone to pick a network again.</p>
+ </div>
+</section>
+
+<!-- SYSTEM -->
+<section class="tab" id="t-sys">
+ <div class="card"><h3>Status</h3><div class="kv" id="kv"></div></div>
+ <div class="card"><h3>Time zone</h3>
+  <div class="row"><div class="t">Clock time zone</div><select data-k="system.tz" id="tzsel"></select></div>
+ </div>
+ <div class="card"><h3>Updates</h3>
+  <div class="row"><div class="t">Install updates automatically<small id="updstat"></small></div><label class="sw"><input type="checkbox" data-k="system.autoUpdate"><i></i></label></div>
+  <div class="btns"><button class="btn" onclick="updCheck(0)">Check for updates</button><button class="btn" onclick="updCheck(1)">Check &amp; install</button></div>
+ </div>
+ <div class="card"><h3>Start over</h3>
+  <div class="btns"><button class="btn" onclick="if(confirm('Restart the radar?'))post('/api/reboot')">Restart</button>
+  <button class="btn bad" onclick="reset()">Factory reset</button></div>
+  <p class="hint">Factory reset erases the location, Wi-Fi network and all settings. The radar then starts in setup mode with its own Wi-Fi hotspot.</p>
+ </div>
+ <details class="grp" style="margin-bottom:12px"><summary><span>Advanced</span><small>for tinkerers</small></summary><div class="in">
+  <div class="row"><div class="t">Flight data source<small>Free community networks. Switches to the others automatically if one is down.</small></div><select data-k="system.source" data-num><option value="0">adsb.lol</option><option value="1">adsb.fi</option><option value="2">airplanes.live (needs registration)</option></select></div>
+  <div class="row"><div class="t">Data refresh<small>How often positions are downloaded</small></div>
+   <select data-k="view.refresh" data-num><option value="2">2 s</option><option value="3">3 s</option><option value="5">5 s</option><option value="10">10 s</option><option value="15">15 s</option><option value="30">30 s</option></select></div>
+  <div class="row"><div class="t">Update source<small>GitHub repository with firmware releases (owner/repo)</small></div><input type="text" data-k="system.repo" style="width:170px" autocapitalize="none" placeholder="Detn8r9/Tabletop-Flight-Dashboard"></div>
+  <div class="row"><div class="t">Device name<small id="hosthint"></small></div><input type="text" data-k="system.hostname" style="width:150px" autocapitalize="none"></div>
+  <div class="row"><div class="t">Firmware update<small id="fwmsg">Install a newer firmware.bin file</small></div></div>
+  <input type="file" id="fw" accept=".bin"><div class="btns"><button class="btn" onclick="upload()">Upload &amp; install</button></div>
+ </div></details>
+</section>
+</div></div>
+<div id="toast">Saved</div>
+</main>
+<script>
+const $=id=>document.getElementById(id), $$=s=>[...document.querySelectorAll(s)];
+let C=null; // current config
+const PAGE_FW='__FW_VERSION__';   // stamped at build time
+const CLASSES=[["airliner","Airliners","Big passenger and cargo jets"],["regional","Regional & business jets","Smaller jets and propeller airliners"],["light","Small planes","Private and training planes"],["highperf","High performance","Very fast or agile aircraft"],["heli","Helicopters","Police, medical, news, tours"],["glider","Gliders & ultralights",""],["balloon","Balloons & blimps",""],["drone","Drones",""],["military","Military",""],["unknown","Unclassified","Planes that don't say what they are"]];
+const FIELDS=[["flight","Flight name"],["model","Plane model"],["route","Route (from > to)"],["alt","Altitude"],["speed","Speed"],["dir","Direction"],["dist","Distance away"],["vs","Climbing / descending"],["code","Flight code"],["reg","Registration"],["type","Type code"],["squawk","Squawk code"]];
+const RANGES=[2,5,10,15,25,50,100,200];
+const UNIT=[[1.15078,'mi','miles'],[1,'nm','nautical miles'],[1.852,'km','kilometers']];
+function U(){return UNIT[C.view.units||0]}
+function toDisp(nm){return Math.round(nm*U()[0]*10)/10}
+function toNm(v){return v/U()[0]}
+const GROUPS={
+ "Boeing":"B712 B733 B734 B735 B736 B737 B738 B739 B37M B38M B39M B3XM B744 B748 B752 B753 B762 B763 B764 B772 B77L B773 B77W B788 B789 B78X",
+ "Airbus":"BCS1 BCS3 A318 A319 A320 A321 A19N A20N A21N A332 A333 A338 A339 A343 A346 A359 A35K A388",
+ "Embraer":"E135 E145 E170 E75S E75L E190 E195 E290 E295",
+ "Regional turboprops & CRJ":"CRJ2 CRJ7 CRJ9 CRJX DH8A DH8B DH8C DH8D AT43 AT45 AT72 AT76 SF34 B190",
+ "Business jets":"C510 C525 C25A C25B C25C C550 C560 C56X C680 C68A C700 C750 E50P E55P CL30 CL35 CL60 GLEX GL5T GL7T GLF4 GLF5 GLF6 G280 LJ35 LJ45 LJ60 FA50 FA7X F2TH PC24 HDJT",
+ "Light & general aviation":"C150 C152 C172 C182 C206 C208 C210 P28A P28R P32R PA34 PA46 SR20 SR22 BE33 BE35 BE36 BE58 M20P DA40 DA42 PC12 TBM7 TBM9",
+ "Helicopters":"R22 R44 R66 B06 B407 B429 B412 EC20 EC30 EC35 EC45 EC55 EC75 AS50 AS55 AS65 A109 A119 A139 A169 S76 S92 H60 MD52 MD60",
+ "Military":"C130 C30J C17 C5M K35R E3TF P8 F15 F16 F18S F35 A10 B52 T38 TEX2 V22 H47 H64"
+};
+const ALLCODES=new Set(Object.values(GROUPS).join(" ").split(" "));
+let selModels=new Set();
+
+// ---------- helpers
+function get(o,p){return p.split('.').reduce((a,k)=>a==null?a:a[k],o)}
+function patchFor(p,v){const o={};let c=o;const ks=p.split('.');ks.slice(0,-1).forEach(k=>c=c[k]={});c[ks.at(-1)]=v;return o}
+function merge(a,b){for(const k in b){if(b[k]&&typeof b[k]==='object'&&!Array.isArray(b[k])){a[k]=a[k]||{};merge(a[k],b[k])}else a[k]=b[k]}return a}
+function toast(t='Saved'){const e=$('toast');e.textContent=t;e.classList.add('on');clearTimeout(e._t);e._t=setTimeout(()=>e.classList.remove('on'),1400)}
+async function post(url,body){const r=await fetch(url,{method:'POST',headers:{'X-FR':'1','Content-Type':'application/json'},body:body?JSON.stringify(body):'{}'});if(!r.ok)throw new Error(await r.text());return r}
+let pend={},timer=null;
+function save(patch){merge(pend,patch);merge(C,patch);applyShow();clearTimeout(timer);timer=setTimeout(flush,450)}
+async function flush(){const p=pend;pend={};try{const r=await post('/api/config',p);C=await r.json();toast()}catch(e){toast('Save failed')}}
+
+// ---------- generic bindings
+function bindAll(){
+ $$('[data-k]').forEach(el=>{
+  const k=el.dataset.k,v=get(C,k);
+  if(el.type==='checkbox')el.checked=!!v;else if(v!=null)el.value=v;
+  if(el._b)return;el._b=1;
+  el.addEventListener('change',()=>{let v=el.type==='checkbox'?el.checked:el.value;
+   if(el.type==='number'||el.type==='range'||'num' in el.dataset)v=Number(v);
+   save(patchFor(k,v));if(k==='view.units')refreshUnits()});
+ });
+ $$('[data-dist]').forEach(el=>{if(el._b)return;el._b=1;el.addEventListener('change',()=>{const v=parseFloat(el.value);if(!isNaN(v)&&v>0){save(patchFor(el.dataset.dist,+toNm(v).toFixed(3)));renderRanges()}})});
+ refreshUnits();
+ applyShow();
+}
+function applyShow(){$$('[data-show]').forEach(e=>e.style.display=get(C,e.dataset.show)?'':'none')}
+
+// ---------- tabs
+$$('#nav button').forEach(b=>b.onclick=()=>{$$('#nav button').forEach(x=>x.classList.toggle('on',x===b));$$('.tab').forEach(t=>t.classList.toggle('on',t.id==='t-'+b.dataset.tab));if(b.dataset.tab==='sys')loadStatus()});
+$$('#typesub button').forEach(b=>b.onclick=()=>{$$('#typesub button').forEach(x=>x.classList.toggle('on',x===b));$('s-cat').style.display=b.dataset.s==='cat'?'':'none';$('s-mod').style.display=b.dataset.s==='mod'?'':'none'});
+
+// ---------- display tab
+function renderRanges(){const r=$('ranges');r.innerHTML='';const cur=toDisp(C.view.range);RANGES.forEach(n=>{const c=document.createElement('span');c.className='chip'+(Math.abs(cur-n)<0.6?' on':'');c.textContent=n+' '+U()[1];c.onclick=()=>{save({view:{range:+toNm(n).toFixed(3)}});renderRanges();refreshUnits()};r.appendChild(c)})}
+function refreshUnits(){$$('[data-dist]').forEach(el=>{el.value=toDisp(get(C,el.dataset.dist))});$$('.uname-long').forEach(e=>e.textContent='In '+U()[2]);$$('.uname-within').forEach(e=>e.textContent='Within this many '+U()[2]);renderRanges()}
+function sweepLbl(){const v=$$('[data-k="view.sweep"]')[0].value;$('sweepv').textContent=`One turn every ${v} seconds`}
+function renderFields(){const f=$('fields');f.innerHTML='';FIELDS.forEach(([k,n])=>{const c=document.createElement('span');c.className='chip'+(C.view.show[k]?' on':'');c.textContent=n;c.onclick=()=>{const v=!C.view.show[k];save({view:{show:{[k]:v}}});c.classList.toggle('on',v)};f.appendChild(c)})}
+
+// ---------- aircraft tab
+function renderClasses(){const box=$('classes');box.innerHTML='';CLASSES.forEach(([k,n,d])=>{const row=document.createElement('div');row.className='row';
+ row.innerHTML=`<div class="t">${n}${d?`<small>${d}</small>`:''}</div><label class="sw"><input type="checkbox"><i></i></label>`;
+ const cb=row.querySelector('input');cb.checked=!!C.filter.classes[k];cb.onchange=()=>save({filter:{classes:{[k]:cb.checked}}});box.appendChild(row)})}
+function setAllClasses(v){const o={};CLASSES.forEach(([k])=>o[k]=v);save({filter:{classes:o}});renderClasses()}
+function parseModels(){selModels=new Set();const extra=[];(C.filter.models||'').split(',').map(s=>s.trim().toUpperCase()).filter(Boolean).forEach(m=>ALLCODES.has(m)?selModels.add(m):extra.push(m));$('custommodels').value=extra.join(', ')}
+function modelsChanged(){const extra=$('custommodels').value.split(',').map(s=>s.trim().toUpperCase()).filter(Boolean);const all=[...selModels,...extra].join(',');save({filter:{models:all}});if((selModels.size||extra.length)&&C.filter.modelMode==0){save({filter:{modelMode:1}});renderMode()}modelSummary()}
+function modelSummary(){const n=selModels.size+$('custommodels').value.split(',').filter(s=>s.trim()).length;const m=C.filter.modelMode;
+ $('modelsum').textContent=m==0?'Model filter is off: all models are shown.':(n?`${m==1?'Showing only':'Hiding'} ${n} selected type${n>1?'s':''}.`:'Select some models below.')}
+function renderMode(){$$('#modelmode button').forEach(b=>b.classList.toggle('on',b.dataset.m==C.filter.modelMode));modelSummary()}
+$$('#modelmode button').forEach(b=>b.onclick=()=>{save({filter:{modelMode:Number(b.dataset.m)}});renderMode()});
+function renderGroups(){const g=$('groups');g.innerHTML='';for(const [name,codes] of Object.entries(GROUPS)){const list=codes.split(' ');
+ const d=document.createElement('details');d.className='grp';
+ const cnt=()=>list.filter(c=>selModels.has(c)).length;
+ d.innerHTML=`<summary><span>${name}</span><small></small></summary><div class="in"><div class="btns" style="margin:0 0 8px"><button class="btn">All</button><button class="btn">None</button></div><div class="chips"></div></div>`;
+ const sm=d.querySelector('small'),ch=d.querySelector('.chips'),[ba,bn]=d.querySelectorAll('.btn');
+ const upd=()=>{sm.textContent=`${cnt()} / ${list.length}`;ch.querySelectorAll('.chip').forEach(c=>c.classList.toggle('on',selModels.has(c.textContent)))};
+ list.forEach(c=>{const s=document.createElement('span');s.className='chip';s.textContent=c;s.onclick=()=>{selModels.has(c)?selModels.delete(c):selModels.add(c);upd();modelsChanged()};ch.appendChild(s)});
+ ba.onclick=()=>{list.forEach(c=>selModels.add(c));upd();modelsChanged()};bn.onclick=()=>{list.forEach(c=>selModels.delete(c));upd();modelsChanged()};
+ upd();g.appendChild(d)}}
+function allModels(v){if(v)ALLCODES.forEach(c=>selModels.add(c));else{selModels.clear();$('custommodels').value=''}renderGroups();modelsChanged()}
+
+// ---------- location
+function showLoc(){$('lat').value=C.location.set?C.location.lat.toFixed(5):'';$('lon').value=C.location.set?C.location.lon.toFixed(5):'';$('locname').value=C.location.name||'';$('approx').style.display=C.location.set&&C.location.approx?'':'none'}
+function setLoc(lat,lon,name,approx=false){save({location:{lat:+lat,lon:+lon,name:name??$('locname').value,approx}});showLoc();$('locmsg').textContent='Location saved. The terrain map redraws in a few seconds.';if(mk){mk.setLatLng([lat,lon]);drawCircle()}}
+function saveLatLon(){const la=parseFloat($('lat').value),lo=parseFloat($('lon').value);if(isNaN(la)||isNaN(lo)||Math.abs(la)>85||Math.abs(lo)>180){$('locmsg').textContent='Enter a valid latitude and longitude.';return}setLoc(la,lo)}
+async function myLocation(){$('locmsg').textContent='Finding you…';
+ const viaIp=async()=>{try{const r=await fetch('/api/iplocate');const j=await r.json();if(!r.ok)throw 0;setLoc(j.lat,j.lon,j.city,true);
+  $('locmsg').textContent=`Set to ${j.city||'your area'} (approximate, from your internet connection). Browsers only share precise GPS location with secure (https) sites, so use "Pick on map" for your exact spot.`}catch(e){$('locmsg').textContent='Could not find your location. Enter it or pick it on the map.'}};
+ if(navigator.geolocation&&window.isSecureContext){navigator.geolocation.getCurrentPosition(p=>setLoc(p.coords.latitude,p.coords.longitude,undefined,false),viaIp,{enableHighAccuracy:true,timeout:10000})}else viaIp()}
+async function search(){const q=$('q').value.trim();if(!q)return;$('results').innerHTML='<p class="hint">Searching…</p>';
+ try{const r=await fetch('https://nominatim.openstreetmap.org/search?format=json&limit=5&q='+encodeURIComponent(q));const j=await r.json();$('results').innerHTML=j.length?'':'<p class="hint">Nothing found.</p>';
+  j.forEach(x=>{const d=document.createElement('div');d.className='res';d.textContent=x.display_name;d.onclick=()=>{setLoc(x.lat,x.lon,x.display_name.split(',')[0]);$('results').innerHTML='';if(lmap)lmap.setView([x.lat,x.lon],11)};$('results').appendChild(d)})
+ }catch(e){$('results').innerHTML='<p class="hint">Search needs an internet connection on this device.</p>'}}
+let lmap=null,mk=null,circ=null;
+function loadLeaflet(){return new Promise((ok,bad)=>{if(window.L)return ok();const l=document.createElement('link');l.rel='stylesheet';l.href='https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';document.head.appendChild(l);const s=document.createElement('script');s.src='https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';s.onload=ok;s.onerror=bad;document.head.appendChild(s)})}
+function drawCircle(){if(!lmap)return;if(circ)circ.remove();circ=L.circle(mk.getLatLng(),{radius:C.view.range*1852,color:'#5ef08a',weight:1,fillOpacity:.05}).addTo(lmap)}
+async function toggleMap(){const m=$('map');if(m.style.display==='block'){m.style.display='none';$('mapbtns').style.display='none';return}
+ try{await loadLeaflet()}catch(e){$('locmsg').textContent='The map needs an internet connection on this device.';return}
+ m.style.display='block';$('mapbtns').style.display='flex';
+ const c=C.location.set?[C.location.lat,C.location.lon]:[39.5,-98.35];
+ if(!lmap){lmap=L.map('map').setView(c,C.location.set?10:4);L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:18,attribution:'© OpenStreetMap'}).addTo(lmap);
+  mk=L.marker(c,{draggable:true}).addTo(lmap);mk.on('dragend',drawCircle);lmap.on('click',e=>{mk.setLatLng(e.latlng);drawCircle()});drawCircle()}
+ setTimeout(()=>lmap.invalidateSize(),50);m.scrollIntoView({behavior:'smooth',block:'center'})}
+function useMapSpot(){const p=mk.getLatLng();setLoc(p.lat.toFixed(5),p.lng.toFixed(5))}
+
+// ---------- night & system
+function hours(sel){for(let h=0;h<24;h++){const o=document.createElement('option');o.value=h;o.textContent=(h%12||12)+(h<12?' AM':' PM');sel.appendChild(o)}}
+async function loadTz(){const t=await (await fetch('/api/timezones')).json();const s=$('tzsel');s.innerHTML='';t.forEach(z=>{const o=document.createElement('option');o.value=z.n;o.textContent=z.n.replace(/_/g,' ');s.appendChild(o)});
+ if(![...s.options].some(o=>o.value===C.system.tz)){const o=document.createElement('option');o.value=C.system.tz;o.textContent=C.system.tz;s.appendChild(o)}
+ s.value=C.system.tz;s.onchange=()=>{const z=t.find(x=>x.n===s.value);save({system:{tz:s.value,tzPosix:z?z.p:C.system.tzPosix}})}}
+async function loadStatus(){try{const s=await (await fetch('/api/status')).json();
+ const up=s.uptime>86400?`${Math.floor(s.uptime/86400)} d ${Math.floor(s.uptime%86400/3600)} h`:`${Math.floor(s.uptime/3600)} h ${Math.floor(s.uptime%3600/60)} min`;
+ $('kv').innerHTML='';[["Firmware",s.fw],["Address",`http://${s.host} · ${s.ip}`],["Wi-Fi",`${s.ssid} (${s.rssi} dBm)`],["Data",s.error||`${s.source}, ${s.dataAge<0?'waiting':s.dataAge+' s ago'}`],["Planes",`${s.shown} on screen, ${s.seenToday} seen today`],["Map",s.map],["Routes known",s.routes],["Room",s.tempC!=null?((C.view.units==2?s.tempC+' °C':Math.round(s.tempC*9/5+32)+' °F')+', '+s.humidity+'% humidity'):'no sensor'],["Battery",s.battery>=0?s.battery+'%':'none fitted'],["Clock",(s.timeSet?'synced':'not synced yet')+(s.rtc?', kept by clock chip':'')],["Airport",s.airport?s.airport+' '+s.airportCity:'—'],["Uptime",up]].forEach(([k,v])=>{const a=document.createElement('span'),b=document.createElement('span');a.textContent=k;b.textContent=v;$('kv').append(a,b)})
+ $('updstat').textContent=`Version ${s.fw} · ${s.update}`+(s.latest?` · newest ${s.latest}`:'');
+ $('hosthint').textContent=`Address: http://${C.system.hostname}.local (restarts when changed)`;
+ }catch(e){}}
+async function show(what){try{await post('/api/show?what='+what);toast('Showing on the radar')}catch(e){toast('Failed')}}
+async function updCheck(install){try{await post('/api/update-check?install='+install);toast(install?'Checking… it installs if there is something new':'Checking…');setTimeout(loadStatus,4000)}catch(e){toast('Failed')}}
+async function loadToday(){try{const h=await (await fetch('/api/highlights')).json();const t=$('today');t.innerHTML='';
+ const add=(k,label)=>{const e=h[k];if(!e)return;const p=document.createElement('p');p.style.margin='4px 0';p.innerHTML='<b></b> <span></span>';p.children[0].textContent=label;p.children[1].textContent=`${e.name}, ${e.model} – ${e.value}`;t.appendChild(p)};
+ const p=document.createElement('p');p.style.margin='0 0 6px';const hr=h.busiestHour;p.textContent=`${h.total} planes seen today`+(hr>=0?`, busiest around ${C.view.units==2?hr+':00':((hr%12)||12)+(hr<12?' AM':' PM')}`:'');t.appendChild(p);
+ add('highest','Highest:');add('fastest','Fastest:');add('closest','Closest:');add('rarest','Rarest:');add('militaryLast','Military:');
+ }catch(e){}setTimeout(loadToday,60000)}
+function renderScreenMode(){$$('#modeseg button').forEach(b=>b.classList.toggle('on',b.dataset.m==C.view.mode))}
+$$('#modeseg button').forEach(b=>b.onclick=()=>{save({view:{mode:Number(b.dataset.m)}});renderScreenMode()});
+async function upload(){const f=$('fw').files[0];if(!f){$('fwmsg').textContent='Choose a .bin file first.';return}
+ const fd=new FormData();fd.append('firmware',f,f.name);$('fwmsg').textContent='Uploading… keep this page open.';
+ const x=new XMLHttpRequest();x.open('POST','/update');x.setRequestHeader('X-FR','1');
+ x.upload.onprogress=e=>{if(e.lengthComputable)$('fwmsg').textContent=`Uploading… ${Math.round(e.loaded/e.total*100)}%`};
+ x.onload=()=>{if(x.status==200){$('fwmsg').textContent='Installed. The radar is restarting; this page will reload.';setTimeout(()=>location.reload(),20000)}else $('fwmsg').textContent='Update failed: '+x.responseText};x.onerror=()=>$('fwmsg').textContent='Upload failed.';x.send(fd)}
+async function reset(){if(!confirm('Erase the location, Wi-Fi and all settings?'))return;if(prompt('Type RESET to confirm')!=='RESET')return;
+ try{await post('/api/reset',{confirm:'RESET'});document.body.innerHTML='<main><h1>Reset done</h1><p>The radar is restarting in setup mode. Join the “FlightRadar-Setup” Wi-Fi to set it up again.</p></main>'}catch(e){alert('Reset failed: '+e.message)}}
+
+// ---------- live preview + list
+const cv=$('screen'),cx=cv.getContext('2d'),img=cx.createImageData(400,300);
+async function preview(){if(!document.hidden){try{const t0=performance.now();const b=new Uint8Array(await (await fetch('/api/screen',{cache:'no-store'})).arrayBuffer());
+ if(b.length===15000){const d=img.data;for(let i=0;i<120000;i++){const on=b[i>>3]&(128>>(i&7));const o=i*4;d[o]=on?29:200;d[o+1]=on?36:207;d[o+2]=on?32:196;d[o+3]=255}cx.putImageData(img,0,0)}
+ $('prevfps').textContent=Math.round(performance.now()-t0)+' ms';}catch(e){}}setTimeout(preview,document.hidden?1500:300)}
+async function fillList(){if($('acdet').open&&!document.hidden){try{const a=await (await fetch('/api/aircraft')).json();const tb=$('actable');tb.innerHTML='';
+ if(!a.length)tb.innerHTML='<tr><td colspan="5" class="hint">No planes nearby right now.</td></tr>';
+ a.forEach(x=>{const tr=document.createElement('tr');if(x.emerg)tr.className='em';
+  [x.name+(x.emerg?' ⚠︎':''),x.model,x.alt+(x.vs==='climbing'?' ↑':x.vs==='descending'?' ↓':''),x.dist+' '+x.dir+(x.from?` · ${x.from}→${x.to}`:'')].forEach(v=>{const td=document.createElement('td');td.textContent=v;tr.appendChild(td)});
+  const td=document.createElement('td');const l=document.createElement('a');l.href='https://globe.airplanes.live/?icao='+encodeURIComponent(x.hex);l.target='_blank';l.rel='noopener';l.textContent='Track';l.style.color='var(--acc)';td.appendChild(l);tr.appendChild(td);
+  tb.appendChild(tr)})}catch(e){}}}
+function list(){fillList();setTimeout(list,4000)}
+$('acdet').addEventListener('toggle',fillList);
+async function pill(){try{const s=await (await fetch('/api/status')).json();
+ // firmware was updated: load the matching page (once; skipped if the page isn't stamped)
+ if(s.fw&&!PAGE_FW.startsWith('__')&&s.fw!==PAGE_FW){let done=null;try{done=sessionStorage.getItem('fr_reload')}catch(e){}
+  if(done!==s.fw){try{sessionStorage.setItem('fr_reload',s.fw)}catch(e){}location.reload();return}}const p=$('pill');
+ // the radar was updated: reload so this page matches the new firmware
+ if(window._fw&&s.fw!==window._fw){location.reload();return}window._fw=s.fw;
+ if(s.error&&s.dataAge!==0){p.className='pill err';p.innerHTML='<b>●</b> can’t get plane data';}else{p.className='pill';p.innerHTML=s.dataAge<0?'<b>●</b> looking for planes':`<b>●</b> live · ${s.shown} plane${s.shown==1?'':'s'}`}}catch(e){$('pill').className='pill err';$('pill').innerHTML='<b>●</b> offline'}setTimeout(pill,5000)}
+
+// ---------- boot
+(async()=>{
+ hours($('nstart'));hours($('nend'));
+ C=await (await fetch('/api/config')).json();
+ bindAll();renderRanges();renderFields();sweepLbl();renderClasses();parseModels();renderGroups();renderMode();renderScreenMode();showLoc();loadToday();
+ if(!C.location.set){$('locmsg').textContent='No location yet. Use one of the options below.'}
+ loadTz();preview();pill();list();
+})();
+</script></body></html>
