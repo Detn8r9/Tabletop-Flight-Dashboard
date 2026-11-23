@@ -1,59 +1,73 @@
-# Builds the firmware and publishes a GitHub release when you push a tag
-# like v1.3.1. Radars with automatic updates turned on pick it up within a
-# day (or right away with "Check for updates" on their settings page).
+# Builds the firmware and publishes a GitHub release whenever a new
+# FW_VERSION reaches main. Radars with automatic updates install it within a
+# day (or right away with "Check & install" on their settings page).
 #
-#   1. Bump FW_VERSION in src/config.h (e.g. "1.3.1")
-#   2. git commit -am "v1.3.1" && git tag v1.3.1 && git push --follow-tags
-#
-# The tag must match FW_VERSION, or radars will keep re-installing it.
+# To release:  bump FW_VERSION in src/config.h (e.g. "1.3.1"), commit, push.
+# The workflow creates the matching tag (v1.3.1) and the release by itself.
+# If a release for that version already exists, it does nothing.
 name: Release firmware
 
 on:
   push:
-    tags: ["v*"]
+    branches: [main]
+  workflow_dispatch:   # "Run workflow" button on the Actions tab
 
 permissions:
   contents: write
 
 jobs:
-  build:
+  release:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Check the tag matches FW_VERSION
+      - name: Read FW_VERSION
+        id: ver
         run: |
           v=$(grep -oP '#define FW_VERSION "\K[^"]+' src/config.h)
-          if [ "v$v" != "${GITHUB_REF_NAME}" ]; then
-            echo "Tag ${GITHUB_REF_NAME} does not match FW_VERSION $v in src/config.h"; exit 1
+          echo "tag=v$v" >> "$GITHUB_OUTPUT"
+          echo "Firmware version: $v"
+
+      - name: Skip if this version is already released
+        id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "${{ steps.ver.outputs.tag }}" >/dev/null 2>&1; then
+            echo "Release ${{ steps.ver.outputs.tag }} already exists - nothing to do."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
           fi
 
       - uses: actions/setup-python@v5
+        if: steps.check.outputs.skip != 'true'
         with:
           python-version: "3.12"
 
       - uses: actions/cache@v4
+        if: steps.check.outputs.skip != 'true'
         with:
           path: ~/.platformio
           key: pio-${{ hashFiles('platformio.ini') }}
 
       - name: Build
+        if: steps.check.outputs.skip != 'true'
         run: |
           pip install platformio
           pio run -e rlcd42
-
-      - name: Collect files
-        run: |
           mkdir out
           cp .pio/build/rlcd42/firmware.bin out/firmware.bin
           cp .pio/build/rlcd42/firmware.factory.bin out/flightradar-full.bin
 
       - name: Publish release
+        if: steps.check.outputs.skip != 'true'
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ steps.ver.outputs.tag }}
+          target_commitish: ${{ github.sha }}
+          name: Tabletop Flight Dashboard ${{ steps.ver.outputs.tag }}
           files: |
             out/firmware.bin
             out/flightradar-full.bin
           body: |
-            **firmware.bin**: wireless update (settings page > System > Advanced > Firmware update). Radars with automatic updates install it by themselves.
-            **flightradar-full.bin**: complete image for a USB flash at address 0x0 (erases settings).
+            **firmware.bin**: wireless update (settings page > System > Advanced > Firmware update). Radars with automatic updates install it by themselves within a day.
+            **flightradar-full.bin**: complete image for a first-time USB flash at address 0x0 (erases settings).

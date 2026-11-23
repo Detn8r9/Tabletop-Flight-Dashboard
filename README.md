@@ -150,13 +150,8 @@ Typical heights: airliners cruise at 30,000–40,000 ft, climb and descend near 
 
 **Publishing a new version** (for the maintainer):
 1. Change `FW_VERSION` in [`src/config.h`](src/config.h), for example to `"1.3.1"`.
-2. Commit, tag and push:
-   ```sh
-   git commit -am "v1.3.1"
-   git tag v1.3.1
-   git push --follow-tags
-   ```
-3. [GitHub Actions](.github/workflows/release.yml) builds the firmware and publishes a release with `firmware.bin` (for wireless updates) and `flightradar-full.bin` (for USB). The tag must match `FW_VERSION`.
+2. Commit and push to `main`.
+3. [GitHub Actions](.github/workflows/release.yml) builds the firmware, creates the tag `v1.3.1` and publishes a release with `firmware.bin` (for wireless updates) and `flightradar-full.bin` (for USB). Pushes that don't change the version build nothing. You can also start it from the **Actions** tab with *Run workflow*.
 
 The repository must stay **public** so radars can download releases without a password.
 
