@@ -27,6 +27,7 @@ Built for the [Waveshare ESP32-S3-RLCD-4.2](https://github.com/waveshareteam/ESP
 - [Building from source](#building-from-source)
 - [Project layout](#project-layout)
 - [Troubleshooting](#troubleshooting)
+- [Version history](CHANGELOG.md)
 - [Data sources and credits](#data-sources-and-credits)
 
 ---
@@ -208,6 +209,10 @@ The toolchain is pinned to [pioarduino](https://github.com/pioarduino/platform-e
 | Map says "Map unavailable" | OpenStreetMap was unreachable; it retries by itself. Planes still show without the map. |
 | Settings page looks out of date after an update | Reload the page. |
 | Start over completely | Hold **KEY** for 10 seconds, or use *System → Factory reset*. |
+
+## Version history
+
+See the [changelog](CHANGELOG.md). Every version, from 1.0.0 on, is in the git history and on the [Releases](../../releases) page.
 
 ## Data sources and credits
 
